@@ -35,7 +35,7 @@ export interface Member {
 export interface User {
   phoneNumber: string;
   loginTime: string;
-  name?: string;
+  name: string;
 }
 
 export interface LogEntry {

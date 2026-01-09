@@ -1,5 +1,5 @@
 {
-  "name": " The Cage MMA-Gym & RS Zumba Academy",
-  "description": "A professional gym enrollment and membership management application featuring member registration, plan selection, and payment tracking with a clean, mobile-first UI.",
+  "name": "The Cage MMA-Gym & RS Zumba Academy",
+  "description": "Professional gym management portal with centralized cloud synchronization, member tracking, and real-time logs.",
   "requestFramePermissions": []
 }
