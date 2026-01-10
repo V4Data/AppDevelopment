@@ -16,22 +16,13 @@ import {
   Edit2,
   RefreshCw,
   Clock,
-  Wifi,
-  WifiOff,
   AlertTriangle,
-  ChevronRight,
   User as UserIcon,
   Database,
-  Info,
-  ArrowRightLeft,
   UserCheck,
-  TrendingUp,
   IndianRupee,
   Calendar,
-  Mail,
-  Users as UsersIcon,
   CalendarDays,
-  CreditCard,
   AlertCircle,
   Bell,
   AlertOctagon,
@@ -223,6 +214,7 @@ const App: React.FC = () => {
     const logId = Date.now().toString() + Math.random().toString(36).substring(2, 7);
     
     try {
+      // Fix: Map the correct camelCase properties from params to snake_case for Supabase
       const { error } = await supabase.from('logs').insert({
         id: logId,
         user_phone: user.phoneNumber,
