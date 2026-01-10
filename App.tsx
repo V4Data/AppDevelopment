@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Header from './components/Header.tsx';
 import BottomNav from './components/BottomNav.tsx';
@@ -9,7 +10,7 @@ import {
   Search, Plus, X, ArrowRight, ShieldCheck, MessageCircle, BarChart3, Edit2, RefreshCw, Clock,
   User as UserIcon, Database, UserCheck, IndianRupee, Calendar, CalendarDays, AlertCircle,
   Bell, AlertOctagon, CheckCircle2, Send, Cake, Gift, Smartphone, ShieldAlert, Power,
-  Monitor, Tablet, Activity
+  Monitor, Tablet, LogOut
 } from 'lucide-react';
 
 const MASTER_KEY = '959510';
@@ -145,6 +146,23 @@ const App: React.FC = () => {
     return new Date(dateString).toLocaleDateString('en-GB');
   };
 
+  // --- AUTOMATIC LOGOUT ON SUNDAY ---
+  useEffect(() => {
+    const checkSunday = () => {
+      const today = new Date();
+      // getDay() returns 0 for Sunday
+      if (today.getDay() === 0 && currentUser) {
+        console.log("Automatic Sunday Logout Triggered");
+        handleLogout();
+        alert("AUTOMATIC SECURITY LOGOUT: The system is scheduled to log out all users every Sunday for security maintenance.");
+      }
+    };
+
+    checkSunday(); // Check on mount
+    const interval = setInterval(checkSunday, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
   const birthdayData = useMemo(() => {
     const today = new Date();
     const tDay = today.getDate();
@@ -273,7 +291,7 @@ const App: React.FC = () => {
     };
   }, [logs]);
 
-const addLog = async (params: {
+  const addLog = async (params: {
     action: string;
     details: string;
     memberId?: string;
@@ -559,8 +577,6 @@ const addLog = async (params: {
       return;
     }
 
-    if (enrollNameError) return;
-
     const paidVal = Number(formData.paymentReceived) || 0;
     if (paidVal < 0) {
       alert("Payment amount cannot be negative");
@@ -572,8 +588,6 @@ const addLog = async (params: {
       setEnrollPhoneError('Enter valid number (10 digits)');
       return;
     }
-
-    if (enrollPhoneError) return;
 
     setIsSyncing(true);
     const joining = new Date(formData.joiningDate);
@@ -889,11 +903,11 @@ The Cage MMA-Gym & RS Fitness Academy`;
               </div>
               <div className="bg-slate-900 p-6 rounded-3xl shadow-lg border border-slate-800">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg"><IndianRupee size={14} /></div>
-                  <span className="text-slate-400 font-bold text-[9px] uppercase tracking-widest">Month Revenue</span>
+                  <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg"><Smartphone size={14} /></div>
+                  <span className="text-slate-400 font-bold text-[9px] uppercase tracking-widest">Logged Devices</span>
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-black text-white">₹{revenueStats.currentMonthRevenue.toLocaleString()}</span>
+                  <span className="text-2xl font-black text-white">{sessions.length}</span>
                 </div>
               </div>
             </div>
@@ -1277,7 +1291,7 @@ The Cage MMA-Gym & RS Fitness Academy`;
                 {sessions.map(session => {
                   const isCurrent = session.id === currentUser?.sessionId;
                   return (
-                    <div key={session.id} className={`p-4 rounded-2xl border transition-all ${isCurrent ? 'bg-emerald-50/50 border-emerald-100 ring-2 ring-emerald-500/10' : 'bg-slate-50/50 border-slate-100'}`}>
+                    <div key={session.id} className={`p-4 rounded-2xl border transition-all ${isCurrent ? 'bg-emerald-50/50 border-emerald-100' : 'bg-slate-50/50 border-slate-100'}`}>
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isCurrent ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
