@@ -8,9 +8,9 @@ import { PACKAGES } from './constants.ts';
 import { supabase, SUPABASE_ANON_KEY } from './lib/supabase.ts';
 import { 
   Search, Plus, X, ArrowRight, ShieldCheck, MessageCircle, BarChart3, Edit2, RefreshCw, Clock,
-  User as UserIcon, Database, UserCheck, IndianRupee, Calendar, CalendarDays, AlertCircle,
+  User as UserIcon, Database, UserCheck, Calendar, CalendarDays, AlertCircle,
   Bell, AlertOctagon, CheckCircle2, Send, Cake, Gift, Smartphone, ShieldAlert, Power,
-  Monitor, Tablet, LogOut
+  Monitor, Tablet
 } from 'lucide-react';
 
 const MASTER_KEY = '959510';
