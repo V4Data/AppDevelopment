@@ -2,43 +2,28 @@
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * 🚀 DATABASE SETUP INSTRUCTIONS:
- * 1. Go to your Supabase Dashboard: https://supabase.com/dashboard/project/druhplxlcyaufqzqvaeu
- * 2. Click "SQL Editor" in the left sidebar.
- * 3. Click "New Query" and paste the following SQL then click "Run":
+ * 🛠️ THE CAGE DATABASE REPAIR SCRIPT 🛠️
+ * --------------------------------------------------
+ * If you see "Column not found" or "Schema cache" errors:
+ * 1. Go to your Supabase Dashboard > SQL Editor.
+ * 2. Run this EXACT script:
  *
- * CREATE TABLE members (
- *   id TEXT PRIMARY KEY,
- *   full_name TEXT NOT NULL,
- *   phone_number TEXT NOT NULL,
- *   email TEXT,
- *   membership_type TEXT,
- *   service_category TEXT,
- *   package_id TEXT,
- *   joining_date TIMESTAMPTZ,
- *   expiry_date TIMESTAMPTZ,
- *   total_paid NUMERIC,
- *   total_fee NUMERIC,
- *   updated_at TIMESTAMPTZ DEFAULT NOW()
- * );
+ * -- Ensure columns exist with EXACT names
+ * ALTER TABLE members ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN DEFAULT FALSE;
+ * ALTER TABLE members ADD COLUMN IF NOT EXISTS reminder_count INTEGER DEFAULT 0;
  *
- * CREATE TABLE logs (
- *   id TEXT PRIMARY KEY,
- *   user_phone TEXT,
- *   user_name TEXT,
- *   action TEXT,
- *   details TEXT,
- *   timestamp TIMESTAMPTZ DEFAULT NOW()
- * );
+ * -- Ensure logs have the required columns
+ * ALTER TABLE logs ADD COLUMN IF NOT EXISTS old_value TEXT;
+ * ALTER TABLE logs ADD COLUMN IF NOT EXISTS new_value TEXT;
  *
- * 4. Go to Settings -> API and find your "anon public" key.
- * 5. Paste it in SUPABASE_ANON_KEY below.
+ * -- CRITICAL: Force the API to refresh its column list
+ * NOTIFY pgrst, 'reload schema';
  */
 
 export const PROJECT_ID = 'druhplxlcyaufqzqvaeu';
 const SUPABASE_URL = `https://${PROJECT_ID}.supabase.co`;
 
-// IMPORTANT: Replace this with your actual VERY LONG "anon public" JWT key
-const SUPABASE_ANON_KEY = 'sb_publishable_ODVFa_Lsdo1vkgtLOzPGLA_osK8_VAj';
+// ⚠️ Ensure this is your actual "anon public" key from Supabase Settings > API
+export const SUPABASE_ANON_KEY = 'sb_publishable_ODVFa_Lsdo1vkgtLOzPGLA_osK8_VAj';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

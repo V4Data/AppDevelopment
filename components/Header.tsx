@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { LogOut, ShieldCheck } from 'lucide-react';
-import { User } from '../types';
+import { User } from '../types.ts';
 
 interface HeaderProps {
   user: User | null;
@@ -17,7 +16,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
         </div>
         <div>
           <h1 className="text-sm font-black text-slate-800 uppercase tracking-tight">The Cage</h1>
-          <p className="text-[9px] text-emerald-500 font-bold uppercase leading-none">MMA-Gym & RS Zumba</p>
+          <p className="text-[9px] text-emerald-500 font-bold uppercase leading-none">MMA-Gym & RS Fitness Academy</p>
         </div>
       </div>
       

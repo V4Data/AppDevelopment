@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Home, Users, ClipboardList } from 'lucide-react';
-import { NavTab } from '../types';
+import { NavTab } from '../types.ts';
 
 interface BottomNavProps {
   activeTab: NavTab;

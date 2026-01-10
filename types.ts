@@ -9,6 +9,12 @@ export enum ServiceCategory {
   MMA = 'MMA'
 }
 
+export enum Gender {
+  MALE = 'MALE',
+  FEMALE = 'FEMALE',
+  OTHER = 'OTHER'
+}
+
 export interface Package {
   id: string;
   name: string;
@@ -28,8 +34,12 @@ export interface Member {
   packageId: string;
   joiningDate: string;
   expiryDate: string;
+  birthdate: string;
+  gender: Gender;
   totalPaid: number;
   totalFee: number;
+  welcomeSent: boolean;
+  reminderCount: number;
 }
 
 export interface User {
@@ -45,6 +55,8 @@ export interface LogEntry {
   action: string;
   details: string;
   timestamp: string;
+  memberId?: string;
+  memberName?: string;
   oldValue?: string;
   newValue?: string;
 }
@@ -57,6 +69,8 @@ export interface RegistrationData {
   serviceCategory: ServiceCategory;
   packageId: string;
   joiningDate: string;
+  birthdate: string;
+  gender: Gender;
   paymentReceived: number;
 }
 

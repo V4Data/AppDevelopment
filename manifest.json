@@ -1,8 +1,7 @@
-
 {
-  "name": "The Cage Management",
+  "name": "The Cage MMA-Gym & RS Fitness Academy",
   "short_name": "The Cage",
-  "description": "Management portal for The Cage MMA-Gym & RS Zumba Academy",
+  "description": "Management portal for The Cage MMA-Gym & RS Fitness Academy",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#0f172a",

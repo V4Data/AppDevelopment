@@ -1,5 +1,4 @@
-
-import { Package, ServiceCategory } from './types';
+import { Package, ServiceCategory } from './types.ts';
 
 export const PACKAGES: Package[] = [
   // Gym Packages
