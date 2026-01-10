@@ -1,4 +1,3 @@
-
 export enum MembershipType {
   SINGLE = 'SINGLE',
   COUPLE = 'COUPLE'
@@ -46,6 +45,18 @@ export interface User {
   phoneNumber: string;
   loginTime: string;
   name: string;
+  sessionId?: string;
+}
+
+export interface ActiveSession {
+  id: string;
+  user_phone: string;
+  user_name: string;
+  device_type: string;
+  ip_address: string;
+  device_id: string;
+  login_time: string;
+  last_active: string;
 }
 
 export interface LogEntry {
@@ -74,5 +85,5 @@ export interface RegistrationData {
   paymentReceived: number;
 }
 
-export type NavTab = 'HOME' | 'MEMBERS' | 'LOGS';
+export type NavTab = 'HOME' | 'MEMBERS' | 'LOGS' | 'DEVICES';
 export type MemberTab = 'ALL' | 'ACTIVE' | '7DAYS' | '15DAYS' | 'INACTIVE';

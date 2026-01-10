@@ -2,36 +2,18 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import Header from './components/Header.tsx';
 import BottomNav from './components/BottomNav.tsx';
 import FormSection from './components/FormSection.tsx';
-import { MembershipType, RegistrationData, NavTab, ServiceCategory, Member, MemberTab, User, LogEntry, Gender } from './types.ts';
+import { MembershipType, RegistrationData, NavTab, ServiceCategory, Member, MemberTab, User, LogEntry, Gender, ActiveSession } from './types.ts';
 import { PACKAGES } from './constants.ts';
 import { supabase, SUPABASE_ANON_KEY } from './lib/supabase.ts';
 import { 
-  Search, 
-  Plus, 
-  X, 
-  ArrowRight,
-  ShieldCheck,
-  MessageCircle,
-  BarChart3,
-  Edit2,
-  RefreshCw,
-  Clock,
-  User as UserIcon,
-  Database,
-  UserCheck,
-  IndianRupee,
-  Calendar,
-  CalendarDays,
-  AlertCircle,
-  Bell,
-  AlertOctagon,
-  CheckCircle2,
-  Send,
-  Cake,
-  Gift
+  Search, Plus, X, ArrowRight, ShieldCheck, MessageCircle, BarChart3, Edit2, RefreshCw, Clock,
+  User as UserIcon, Database, UserCheck, IndianRupee, Calendar, CalendarDays, AlertCircle,
+  Bell, AlertOctagon, CheckCircle2, Send, Cake, Gift, Smartphone, ShieldAlert, Power,
+  Monitor, Tablet, Activity
 } from 'lucide-react';
 
-const MASTER_KEY = '240596';
+const MASTER_KEY = '959510';
+const MASTER_ADMIN_PHONE = '+919595107293';
 
 const MANAGER_MAP: Record<string, string> = {
   '9130368298': 'Shrikanth Sir',
@@ -40,6 +22,22 @@ const MANAGER_MAP: Record<string, string> = {
 };
 
 const ALLOWED_MANAGEMENT_PHONES = Object.keys(MANAGER_MAP);
+
+const getDeviceType = () => {
+  const ua = navigator.userAgent;
+  if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) return "Tablet";
+  if (/Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|(hpw|web)OS|Opera M(obi|ini)/.test(ua)) return "Phone";
+  return "PC / Laptop";
+};
+
+const getDeviceId = () => {
+  let id = localStorage.getItem('thecage_device_uid');
+  if (!id) {
+    id = 'UID-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('thecage_device_uid', id);
+  }
+  return id;
+};
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -63,6 +61,7 @@ const App: React.FC = () => {
 
   const [members, setMembers] = useState<Member[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [sessions, setSessions] = useState<ActiveSession[]>([]);
 
   const [loginPhone, setLoginPhone] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -87,6 +86,9 @@ const App: React.FC = () => {
     paymentReceived: 0,
   });
 
+  const isMasterAdmin = currentUser?.phoneNumber === MASTER_ADMIN_PHONE;
+  const isConfigMissing = SUPABASE_ANON_KEY.includes('YOUR_ACTUAL_LONG');
+
   const getRemainingDays = (expiryDate: string) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -102,6 +104,45 @@ const App: React.FC = () => {
     join.setHours(0, 0, 0, 0);
     const diff = Math.floor((today.getTime() - join.getTime()) / (1000 * 60 * 60 * 24));
     return diff < 0 ? 0 : diff;
+  };
+
+  const safeShowPicker = (input: HTMLInputElement | null) => {
+    if (input && typeof (input as any).showPicker === 'function') {
+      try {
+        (input as any).showPicker();
+      } catch (err) {
+        console.warn("Native picker failed, focusing input instead", err);
+        input.focus();
+      }
+    } else if (input) {
+      input.focus();
+      input.click();
+    }
+  };
+
+  const validateName = (name: string) => {
+    const nameRegex = /^[a-zA-Z\s]*$/;
+    if (!nameRegex.test(name)) {
+      setEnrollNameError('Enter valid name (Letters only)');
+      return false;
+    }
+    setEnrollNameError('');
+    return true;
+  };
+
+  const validatePhone = (phone: string) => {
+    const phoneRegex = /^[0-9]*$/;
+    if (!phoneRegex.test(phone)) {
+      setEnrollPhoneError('Enter valid number (Digits only)');
+      return false;
+    }
+    setEnrollPhoneError('');
+    return true;
+  };
+
+  const formatDateString = (dateString: string) => {
+    if (!dateString) return 'Invalid Date';
+    return new Date(dateString).toLocaleDateString('en-GB');
   };
 
   const birthdayData = useMemo(() => {
@@ -162,43 +203,77 @@ const App: React.FC = () => {
     return expiry.toISOString().split('T')[0];
   }, [formData.joiningDate, selectedPackageData.durationDays]);
 
-  const isConfigMissing = SUPABASE_ANON_KEY.includes('YOUR_ACTUAL_LONG');
-
-  const safeShowPicker = (input: HTMLInputElement | null) => {
-    if (input && typeof (input as any).showPicker === 'function') {
-      try {
-        (input as any).showPicker();
-      } catch (err) {
-        console.warn("Native picker failed, focusing input instead", err);
-        input.focus();
+  const filteredMembers = useMemo(() => {
+    return members.filter(m => {
+      const matchSearch = m.fullName.toLowerCase().includes(searchQuery.toLowerCase()) || m.phoneNumber.includes(searchQuery);
+      const daysLeft = getRemainingDays(m.expiryDate);
+      switch (memberTab) {
+        case 'ACTIVE': return matchSearch && daysLeft >= 0;
+        case 'INACTIVE': return matchSearch && daysLeft < 0;
+        case '7DAYS': return matchSearch && daysLeft >= 0 && daysLeft <= 7;
+        case '15DAYS': return matchSearch && daysLeft > 7 && daysLeft <= 15;
+        default: return matchSearch;
       }
-    } else if (input) {
-      input.focus();
-      input.click();
-    }
-  };
+    });
+  }, [members, searchQuery, memberTab]);
 
-  const validateName = (name: string) => {
-    const nameRegex = /^[a-zA-Z\s]*$/;
-    if (!nameRegex.test(name)) {
-      setEnrollNameError('Enter valid name (Letters only)');
-      return false;
-    }
-    setEnrollNameError('');
-    return true;
-  };
+  const homeReminders = useMemo(() => {
+    const activeMembers = members.filter(m => getRemainingDays(m.expiryDate) >= 0);
+    const m7 = activeMembers.filter(m => {
+      const d = getRemainingDays(m.expiryDate);
+      return d >= 0 && d <= 7;
+    });
+    const m15 = activeMembers.filter(m => {
+      const d = getRemainingDays(m.expiryDate);
+      return d > 7 && d <= 15;
+    });
+    const pending = members.filter(m => (m.totalFee - m.totalPaid) > 0);
+    return { m7, m15, pending };
+  }, [members]);
 
-  const validatePhone = (phone: string) => {
-    const phoneRegex = /^[0-9]*$/;
-    if (!phoneRegex.test(phone)) {
-      setEnrollPhoneError('Enter valid number (Digits only)');
-      return false;
-    }
-    setEnrollPhoneError('');
-    return true;
-  };
+  const revenueStats = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
 
-  const addLog = async (params: {
+    const monthlyData: { month: string, revenue: number }[] = [];
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(currentYear, currentMonth - i, 1);
+      const m = d.getMonth();
+      const y = d.getFullYear();
+      
+      const monthlyRevenue = members.reduce((sum, member) => {
+        const joinDate = new Date(member.joiningDate);
+        if (joinDate.getMonth() === m && joinDate.getFullYear() === y) {
+          return sum + member.totalPaid;
+        }
+        return sum;
+      }, 0);
+
+      monthlyData.push({
+        month: monthNames[m],
+        revenue: monthlyRevenue
+      });
+    }
+
+    const currentMonthRevenue = monthlyData[monthlyData.length - 1]?.revenue || 0;
+    const maxRevenue = Math.max(...monthlyData.map(d => d.revenue), 1000);
+
+    return { monthlyData, currentMonthRevenue, maxRevenue };
+  }, [members]);
+
+  const logsByDay = useMemo(() => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    return {
+      today: logs.filter(l => new Date(l.timestamp) >= today),
+      earlier: logs.filter(l => new Date(l.timestamp) < today)
+    };
+  }, [logs]);
+
+const addLog = async (params: {
     action: string;
     details: string;
     memberId?: string;
@@ -225,14 +300,11 @@ const App: React.FC = () => {
         new_value: params.newValue,
         timestamp: new Date().toISOString()
       });
-      if (error) {
-        if (error.message.includes('column') || error.message.includes('schema cache')) {
-          setSchemaError(true);
-        }
-        console.error("Log error:", error.message);
+      if (error && (error.message.includes('column') || error.message.includes('schema cache'))) {
+        setSchemaError(true);
       }
     } catch (err) {
-      console.error("Critical logging error:", err);
+      console.error("Log error:", err);
     }
   };
 
@@ -249,9 +321,7 @@ const App: React.FC = () => {
         .order('updated_at', { ascending: false });
       
       if (mError) {
-        if (mError.message.includes('column') || mError.message.includes('schema cache')) {
-          setSchemaError(true);
-        }
+        if (mError.message.includes('column') || mError.message.includes('schema cache')) setSchemaError(true);
         throw mError;
       }
 
@@ -296,11 +366,18 @@ const App: React.FC = () => {
           timestamp: l.timestamp
         })));
       }
+
+      const { data: sessionData } = await supabase
+        .from('sessions')
+        .select('*')
+        .order('login_time', { ascending: false });
+      
+      if (sessionData) {
+        setSessions(sessionData as ActiveSession[]);
+      }
     } catch (err: any) {
       const errMsg = err.message || JSON.stringify(err);
-      if (errMsg.includes('column') || errMsg.includes('schema cache')) {
-        setSchemaError(true);
-      }
+      if (errMsg.includes('column') || errMsg.includes('schema cache')) setSchemaError(true);
       setConnectionError(err.message === 'Unauthorized' ? 'Invalid API Key' : errMsg || 'Connection Error');
     } finally {
       setIsSyncing(false);
@@ -308,10 +385,38 @@ const App: React.FC = () => {
   }, [currentUser, isConfigMissing]);
 
   useEffect(() => {
+    if (!currentUser?.sessionId || isConfigMissing) return;
+
+    const sessionChannel = supabase.channel(`session-${currentUser.sessionId}`)
+      .on('postgres_changes', { 
+        event: 'DELETE', 
+        schema: 'public', 
+        table: 'sessions', 
+        filter: `id=eq.${currentUser.sessionId}` 
+      }, () => {
+        handleLogout();
+        alert("SECURITY: Your session was disconnected by the Administrator.");
+      })
+      .subscribe();
+
+    const heartbeat = setInterval(async () => {
+      await supabase.from('sessions')
+        .update({ last_active: new Date().toISOString() })
+        .eq('id', currentUser.sessionId);
+    }, 30000);
+
+    return () => { 
+      supabase.removeChannel(sessionChannel);
+      clearInterval(heartbeat);
+    };
+  }, [currentUser?.sessionId, isConfigMissing]);
+
+  useEffect(() => {
     if (!currentUser || isConfigMissing) return;
     fetchData();
     const channel = supabase.channel('global-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions' }, () => fetchData())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'logs' }, (payload) => {
         const l = payload.new as any;
         setLogs(prev => [{
@@ -334,31 +439,115 @@ const App: React.FC = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const phoneClean = loginPhone.replace(/\D/g, '');
+    const phone10 = phoneClean.slice(-10);
     const form = e.currentTarget as HTMLFormElement;
     const key = (new FormData(form)).get('masterKey') as string;
     
-    if (key === MASTER_KEY && ALLOWED_MANAGEMENT_PHONES.includes(phoneClean)) {
-      const derivedName = MANAGER_MAP[phoneClean];
-      const user = { phoneNumber: `+91${phoneClean}`, name: derivedName, loginTime: new Date().toISOString() };
-      setCurrentUser(user);
-      localStorage.setItem('thecage_session', JSON.stringify(user));
-      await addLog({
-        action: 'LOGIN',
-        details: `${user.name} logged in from device`,
-        userOverride: user
-      });
+    if (key === MASTER_KEY && ALLOWED_MANAGEMENT_PHONES.includes(phone10)) {
+      setIsSyncing(true);
+      const derivedName = MANAGER_MAP[phone10];
+      
+      let ip = 'Unknown';
+      try {
+        const ipRes = await fetch('https://api.ipify.org?format=json');
+        const ipData = await ipRes.json();
+        ip = ipData.ip;
+      } catch (err) { console.error("IP Fetch failed", err); }
+
+      const sessionObj = {
+        user_phone: `+91${phone10}`,
+        user_name: derivedName,
+        device_type: getDeviceType(),
+        ip_address: ip,
+        device_id: getDeviceId(),
+        login_time: new Date().toISOString()
+      };
+
+      try {
+        const { data, error } = await supabase.from('sessions').insert(sessionObj).select().single();
+        if (error) throw error;
+
+        const user: User = { 
+          phoneNumber: sessionObj.user_phone, 
+          name: derivedName, 
+          sessionId: data.id,
+          loginTime: sessionObj.login_time
+        };
+        setCurrentUser(user);
+        localStorage.setItem('thecage_session', JSON.stringify(user));
+        
+        await addLog({
+          action: 'LOGIN',
+          details: `${user.name} logged in from ${sessionObj.device_type} (IP: ${ip})`,
+          userOverride: user
+        });
+      } catch (err: any) {
+        alert("Session Login Error: " + err.message + "\n\nTip: Ensure the SQL script was run in Supabase SQL Editor.");
+      } finally {
+        setIsSyncing(false);
+      }
     } else {
-      setLoginError('INVALID CREDENTIALS');
+      setLoginError('INVALID CREDENTIALS OR PHONE');
     }
   };
 
   const handleLogout = async () => {
-    if (currentUser) await addLog({
-      action: 'LOGOUT',
-      details: `${currentUser.name} logged out`
-    });
+    if (currentUser) {
+      if (currentUser.sessionId) {
+        await supabase.from('sessions').delete().eq('id', currentUser.sessionId);
+      }
+      await addLog({
+        action: 'LOGOUT',
+        details: `${currentUser.name} logged out`
+      });
+    }
     setCurrentUser(null);
     localStorage.removeItem('thecage_session');
+  };
+
+  const removeSession = async (sessionId: string, userName: string) => {
+    if (!isMasterAdmin) return;
+    if (!confirm(`Log out ${userName}'s device immediately?`)) return;
+    
+    setIsSyncing(true);
+    try {
+      const { error } = await supabase.from('sessions').delete().eq('id', sessionId);
+      if (error) throw error;
+
+      await addLog({
+        action: 'ADMIN_FORCE_LOGOUT',
+        details: `Master Admin (Vishwajeet) disconnected ${userName}'s device`
+      });
+      fetchData();
+    } catch (err: any) {
+      alert("Failed to disconnect: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const logoutAllExceptMe = async () => {
+    if (!isMasterAdmin) return;
+    if (!confirm(`Log out all other active devices?`)) return;
+
+    setIsSyncing(true);
+    try {
+      const others = sessions.filter(s => s.id !== currentUser?.sessionId).map(s => s.id);
+      if (others.length > 0) {
+        const { error } = await supabase.from('sessions').delete().in('id', others);
+        if (error) throw error;
+
+        await addLog({
+          action: 'ADMIN_LOGOUT_ALL',
+          details: `Master Admin disconnected all other ${others.length} devices`
+        });
+      }
+      fetchData();
+    } catch (err: any) {
+      alert("Failed to disconnect others: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleEnrollment = async () => {
@@ -493,76 +682,6 @@ const App: React.FC = () => {
     });
   };
 
-  const filteredMembers = useMemo(() => {
-    return members.filter(m => {
-      const matchSearch = m.fullName.toLowerCase().includes(searchQuery.toLowerCase()) || m.phoneNumber.includes(searchQuery);
-      const daysLeft = getRemainingDays(m.expiryDate);
-      switch (memberTab) {
-        case 'ACTIVE': return matchSearch && daysLeft >= 0;
-        case 'INACTIVE': return matchSearch && daysLeft < 0;
-        case '7DAYS': return matchSearch && daysLeft >= 0 && daysLeft <= 7;
-        case '15DAYS': return matchSearch && daysLeft > 7 && daysLeft <= 15;
-        default: return matchSearch;
-      }
-    });
-  }, [members, searchQuery, memberTab]);
-
-  const homeReminders = useMemo(() => {
-    const activeMembers = members.filter(m => getRemainingDays(m.expiryDate) >= 0);
-    const m7 = activeMembers.filter(m => {
-      const d = getRemainingDays(m.expiryDate);
-      return d >= 0 && d <= 7;
-    });
-    const m15 = activeMembers.filter(m => {
-      const d = getRemainingDays(m.expiryDate);
-      return d > 7 && d <= 15;
-    });
-    const pending = members.filter(m => (m.totalFee - m.totalPaid) > 0);
-    return { m7, m15, pending };
-  }, [members]);
-
-  const revenueStats = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    const monthlyData: { month: string, revenue: number }[] = [];
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(currentYear, currentMonth - i, 1);
-      const m = d.getMonth();
-      const y = d.getFullYear();
-      
-      const monthlyRevenue = members.reduce((sum, member) => {
-        const joinDate = new Date(member.joiningDate);
-        if (joinDate.getMonth() === m && joinDate.getFullYear() === y) {
-          return sum + member.totalPaid;
-        }
-        return sum;
-      }, 0);
-
-      monthlyData.push({
-        month: monthNames[m],
-        revenue: monthlyRevenue
-      });
-    }
-
-    const currentMonthRevenue = monthlyData[monthlyData.length - 1]?.revenue || 0;
-    const maxRevenue = Math.max(...monthlyData.map(d => d.revenue), 1000); 
-
-    return { monthlyData, currentMonthRevenue, maxRevenue };
-  }, [members]);
-
-  const logsByDay = useMemo(() => {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    return {
-      today: logs.filter(l => new Date(l.timestamp) >= today),
-      earlier: logs.filter(l => new Date(l.timestamp) < today)
-    };
-  }, [logs]);
-
   const updateMemberMessageStatus = async (memberId: string, updates: { welcome_sent?: boolean; reminder_count?: number }) => {
     if (schemaError) {
       console.warn("Skipping message update due to schema detection issue.");
@@ -589,11 +708,6 @@ const App: React.FC = () => {
     }
   };
 
-  const formatDateString = (dateString: string) => {
-    if (!dateString) return 'Invalid Date';
-    return new Date(dateString).toLocaleDateString('en-GB'); // dd/mm/yyyy
-  };
-
   const sendBirthdayWish = (member: Member) => {
     const phone = member.phoneNumber.replace(/\D/g, '');
     const text = `*Warmest Birthday Greetings!* 🎂
@@ -602,7 +716,7 @@ Dear ${member.fullName},
 
 Warmest birthday greetings from all of us at *The Cage MMA-Gym & RS Fitness Academy!*
 
-May your day be as incredible as your dedication to fitness. Wishing you a year ahead filled with strength, health, success, and prosperity. We are proud to have you as a valued member of our fitness community. 🦾
+May your day be as incredible as your dedication to fitness. Wishing you a year ahead filled with strength, health, success, and prosperity. We are proud to have you as a valued member of our fitness community. 💪
 
 Best Regards,
 The Management Team
@@ -635,7 +749,7 @@ The Cage MMA-Gym & RS Fitness Academy`;
 
       text = `*Hello ${member.fullName}!*
 
-Greetings from The Cage MMA-Gym & RS Fitness Academy. I am ${managerName}, sending this message on behalf of our management team. We are extremely excited to have you join our fitness community! 🦾
+Greetings from The Cage MMA-Gym & RS Fitness Academy. I am ${managerName}, sending this message on behalf of our management team. We are extremely excited to have you join our fitness community! 💪
 
 Your Membership Details:
 • Name: ${member.fullName}
@@ -719,11 +833,13 @@ The Cage MMA-Gym & RS Fitness Academy`;
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="relative">
             <UserIcon size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input type="tel" required value={loginPhone} maxLength={10} onChange={e => setLoginPhone(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-5 py-4 font-bold text-black focus:ring-2 focus:ring-emerald-500/50 outline-none" placeholder="Manager Phone" />
+            <input type="tel" required value={loginPhone} maxLength={13} onChange={e => setLoginPhone(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-5 py-4 font-bold text-black focus:ring-2 focus:ring-emerald-500/50 outline-none" placeholder="Manager Phone" />
           </div>
           <input name="masterKey" type="password" required className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-black text-black focus:ring-2 focus:ring-emerald-500/50 outline-none" placeholder="Master Key" />
           {loginError && <p className="text-red-500 text-[10px] font-black text-center uppercase">{loginError}</p>}
-          <button className="w-full bg-emerald-500 text-white py-5 rounded-3xl font-black active:scale-[0.98] transition-all shadow-lg shadow-emerald-500/20 mt-4">LOG IN & SYNC</button>
+          <button disabled={isSyncing} className="w-full bg-emerald-500 text-white py-5 rounded-3xl font-black active:scale-[0.98] transition-all shadow-lg shadow-emerald-500/20 mt-4 flex items-center justify-center gap-2">
+            {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : 'LOG IN & SYNC'}
+          </button>
         </form>
       </div>
     </div>
@@ -782,7 +898,6 @@ The Cage MMA-Gym & RS Fitness Academy`;
               </div>
             </div>
 
-            {/* Member Birthdays Section */}
             <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm space-y-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1003,7 +1118,6 @@ The Cage MMA-Gym & RS Fitness Academy`;
             </div>
           </div>
         )}
-
         {activeTab === 'MEMBERS' && (
           <div className="space-y-6">
             <div className="sticky top-16 bg-slate-50/95 backdrop-blur-sm z-30 pt-4 pb-2">
@@ -1135,6 +1249,84 @@ The Cage MMA-Gym & RS Fitness Academy`;
           </div>
         )}
 
+        {activeTab === 'DEVICES' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert size={20} className="text-amber-500" />
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-tight text-slate-800">Device Management</h3>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                      {isMasterAdmin ? 'Master Admin Control Enabled' : 'Active Login Sessions'}
+                    </p>
+                  </div>
+                </div>
+                {isMasterAdmin && sessions.length > 1 && (
+                  <button 
+                    onClick={logoutAllExceptMe} 
+                    className="bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg shadow-red-500/20 active:scale-95 transition-all flex items-center gap-2"
+                  >
+                    <Power size={12} />
+                    Logout Others
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                {sessions.map(session => {
+                  const isCurrent = session.id === currentUser?.sessionId;
+                  return (
+                    <div key={session.id} className={`p-4 rounded-2xl border transition-all ${isCurrent ? 'bg-emerald-50/50 border-emerald-100 ring-2 ring-emerald-500/10' : 'bg-slate-50/50 border-slate-100'}`}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isCurrent ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                            {session.device_type === 'Phone' ? <Smartphone size={18} /> : session.device_type === 'Tablet' ? <Tablet size={18} /> : <Monitor size={18} />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-[10px] font-black uppercase text-slate-800">{session.user_name}</h4>
+                              {isCurrent && <span className="text-[7px] font-black bg-emerald-500 text-white px-1.5 py-0.5 rounded-full uppercase">Current Device</span>}
+                            </div>
+                            <p className="text-[8px] font-bold text-slate-400 uppercase">{session.device_type} • {session.ip_address}</p>
+                          </div>
+                        </div>
+                        {isMasterAdmin && !isCurrent && (
+                          <button 
+                            onClick={() => removeSession(session.id, session.user_name)} 
+                            className="p-3 bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-500 hover:text-white active:scale-90 transition-all shadow-sm flex items-center gap-1.5"
+                            title="Disconnect Device"
+                          >
+                            <Power size={14} />
+                            <span className="text-[8px] font-black uppercase">Remove</span>
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                        <div className="bg-white/50 p-2 rounded-lg border border-slate-100/50">
+                          <span className="text-[7px] font-black text-slate-300 uppercase block">Login Time</span>
+                          <span className="text-[8px] font-bold text-slate-600 uppercase">{new Date(session.login_time).toLocaleString('en-GB', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })}</span>
+                        </div>
+                        <div className="bg-white/50 p-2 rounded-lg border border-slate-100/50">
+                          <span className="text-[7px] font-black text-slate-300 uppercase block">Hardware ID</span>
+                          <span className="text-[8px] font-bold text-slate-600 truncate block max-w-[100px]">{session.device_id}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {!isMasterAdmin && (
+                <div className="mt-6 p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
+                  <ShieldAlert size={16} className="text-amber-500 shrink-0" />
+                  <p className="text-[9px] font-bold text-amber-700 leading-relaxed uppercase">Only Master Admin (Vishwajeet Sir) can remotely disconnect other devices. Please contact him if you suspect unauthorized access.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         <div className={`fixed inset-0 z-[100] transition-all duration-500 ${showEnrollModal ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={closeEnrollmentFlow}></div>
           <div className={`absolute bottom-0 left-0 right-0 bg-white rounded-t-[40px] shadow-2xl transition-transform duration-500 transform ${showEnrollModal ? 'translate-y-0' : 'translate-y-full'} overflow-y-auto max-h-[90vh] pb-10 p-8`}>
@@ -1335,9 +1527,7 @@ The Cage MMA-Gym & RS Fitness Academy`;
             )}
           </div>
         </div>
-
-        {/* Highlighted Creator Credit */}
-        <div className="mt-8 mb-4 text-center">
+<div className="mt-8 mb-4 text-center">
           <p className="text-[9px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full inline-block shadow-sm border border-emerald-100">
             {'created by '}
             <span className="font-black">Vishwajeet Bhangare (9595107293)</span>
