@@ -214,7 +214,6 @@ const App: React.FC = () => {
     const logId = Date.now().toString() + Math.random().toString(36).substring(2, 7);
     
     try {
-      // Fix: Map the correct camelCase properties from params to snake_case for Supabase
       const { error } = await supabase.from('logs').insert({
         id: logId,
         user_phone: user.phoneNumber,
@@ -422,10 +421,11 @@ const App: React.FC = () => {
 
       if (editingMember) {
         const changes = [];
-        if (editingMember.fullName !== memberData.full_name) changes.push(`Name: ${editingMember.fullName} -> ${memberData.full_name}`);
-        if (editingMember.totalPaid !== memberData.total_paid) changes.push(`Paid: ₹${editingMember.totalPaid} -> ₹${memberData.total_paid}`);
-        if (editingMember.packageId !== memberData.package_id) changes.push(`Package: ${editingMember.packageId} -> ${memberData.package_id}`);
-        if (editingMember.gender !== memberData.gender) changes.push(`Gender: ${editingMember.gender} -> ${memberData.gender}`);
+        // Note: Replacing '->' with 'to' in strings to avoid TS1382 JSX parser confusion
+        if (editingMember.fullName !== memberData.full_name) changes.push(`Name: ${editingMember.fullName} to ${memberData.full_name}`);
+        if (editingMember.totalPaid !== memberData.total_paid) changes.push(`Paid: ₹${editingMember.totalPaid} to ₹${memberData.total_paid}`);
+        if (editingMember.packageId !== memberData.package_id) changes.push(`Package: ${editingMember.packageId} to ${memberData.package_id}`);
+        if (editingMember.gender !== memberData.gender) changes.push(`Gender: ${editingMember.gender} to ${memberData.gender}`);
         
         await addLog({
           action: 'MEMBER_UPDATE',
