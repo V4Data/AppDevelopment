@@ -16,7 +16,6 @@ import {
   Edit2,
   RefreshCw,
   Clock,
-  AlertTriangle,
   User as UserIcon,
   Database,
   UserCheck,
@@ -700,7 +699,7 @@ The Cage MMA-Gym & RS Fitness Academy`;
         <div className="bg-slate-50 p-4 rounded-2xl text-left space-y-2">
           <p className="text-[10px] font-black uppercase text-slate-400">Next Steps:</p>
           <ul className="text-[11px] text-slate-600 font-bold list-disc pl-4 space-y-1">
-            <li>Go to Supabase Dashboard > Settings > API</li>
+            <li>Go to Supabase Dashboard - Settings - API</li>
             <li>Copy the "anon" (public) key</li>
             <li>Paste it into <code className="bg-white px-1">lib/supabase.ts</code></li>
           </ul>
@@ -737,7 +736,7 @@ The Cage MMA-Gym & RS Fitness Academy`;
       {schemaError && (
         <div className="bg-red-600 text-white px-6 py-4 flex flex-col items-center gap-3 text-center animate-in slide-in-from-top duration-500 relative z-[60]">
           <div className="flex items-center gap-2">
-            <AlertTriangle size={24} className="animate-pulse" />
+            <Bell size={24} className="animate-pulse" />
             <h4 className="font-black uppercase text-xs">Schema Refresh Required</h4>
           </div>
           <p className="text-[10px] font-bold opacity-90 leading-relaxed uppercase max-w-sm">
