@@ -1,5 +1,4 @@
-
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Header from './components/Header.tsx';
 import BottomNav from './components/BottomNav.tsx';
 import FormSection from './components/FormSection.tsx';
@@ -8,9 +7,8 @@ import { PACKAGES } from './constants.ts';
 import { supabase, SUPABASE_ANON_KEY } from './lib/supabase.ts';
 import { 
   Search, Plus, X, ArrowRight, ShieldCheck, MessageCircle, BarChart3, Edit2, RefreshCw, Clock,
-  User as UserIcon, Database, UserCheck, Calendar, CalendarDays, AlertCircle,
-  Bell, AlertOctagon, CheckCircle2, Send, Cake, Gift, Smartphone, ShieldAlert, Power,
-  Monitor, Tablet, IndianRupee, Mail
+  User as UserIcon, Database, Calendar, CalendarDays,
+  Bell, Send, Cake, Gift, Smartphone, Power, IndianRupee, Mail
 } from 'lucide-react';
 
 const FALLBACK_MASTER_KEY = '959510';
@@ -90,21 +88,7 @@ const App: React.FC = () => {
   const isMasterAdmin = currentUser?.phoneNumber === MASTER_ADMIN_PHONE;
   const isConfigMissing = SUPABASE_ANON_KEY.includes('YOUR_ACTUAL_LONG');
 
-  const handleLogout = useCallback(async () => {
-    if (currentUser) {
-      if (currentUser.sessionId) {
-        await supabase.from('sessions').delete().eq('id', currentUser.sessionId);
-      }
-      await addLog({
-        action: 'LOGOUT',
-        details: `${currentUser.name} logged out`
-      });
-    }
-    setCurrentUser(null);
-    localStorage.removeItem('thecage_session');
-  }, [currentUser]);
-
-  const addLog = async (params: {
+  const addLog = useCallback(async (params: {
     action: string;
     details: string;
     memberId?: string;
@@ -119,7 +103,6 @@ const App: React.FC = () => {
     const logId = Date.now().toString() + Math.random().toString(36).substring(2, 7);
     
     try {
-      // Fix: Corrected property access to use camelCase 'oldValue' and 'newValue' from params.
       const { error } = await supabase.from('logs').insert({
         id: logId,
         user_phone: user.phoneNumber,
@@ -138,7 +121,21 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Log error:", err);
     }
-  };
+  }, [currentUser, isConfigMissing]);
+
+  const handleLogout = useCallback(async () => {
+    if (currentUser) {
+      if (currentUser.sessionId) {
+        await supabase.from('sessions').delete().eq('id', currentUser.sessionId);
+      }
+      await addLog({
+        action: 'LOGOUT',
+        details: `${currentUser.name} logged out`
+      });
+    }
+    setCurrentUser(null);
+    localStorage.removeItem('thecage_session');
+  }, [currentUser, addLog]);
 
   useEffect(() => {
     const fetchAndRotateConfig = async () => {
@@ -383,7 +380,7 @@ const App: React.FC = () => {
           serviceCategory: m.service_category as ServiceCategory,
           packageId: m.package_id,
           joiningDate: m.joining_date,
-          expiry_date: m.expiry_date,
+          expiryDate: m.expiry_date, // Fixed property name mapping
           birthdate: m.birthdate || '2000-01-01',
           gender: (m.gender as Gender) || Gender.MALE,
           totalPaid: Number(m.total_paid || 0),
@@ -523,7 +520,7 @@ const App: React.FC = () => {
         localStorage.setItem('thecage_session', JSON.stringify(user));
         await addLog({ action: 'LOGIN', details: `${user.name} logged in from ${sessionObj.device_type} (IP: ${ip})`, userOverride: user });
       } catch (err: any) {
-        alert("Session Login Error: " + err.message);
+        setLoginError("Login failed: " + err.message);
       } finally {
         setIsSyncing(false);
       }
@@ -543,25 +540,6 @@ const App: React.FC = () => {
       fetchData();
     } catch (err: any) {
       alert("Failed to disconnect: " + err.message);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const logoutAllExceptMe = async () => {
-    if (!isMasterAdmin) return;
-    if (!confirm(`Log out all other active devices?`)) return;
-    setIsSyncing(true);
-    try {
-      const others = sessions.filter(s => s.id !== currentUser?.sessionId).map(s => s.id);
-      if (others.length > 0) {
-        const { error } = await supabase.from('sessions').delete().in('id', others);
-        if (error) throw error;
-        await addLog({ action: 'ADMIN_LOGOUT_ALL', details: `Master Admin disconnected all other ${others.length} devices` });
-      }
-      fetchData();
-    } catch (err: any) {
-      alert("Failed to disconnect others: " + err.message);
     } finally {
       setIsSyncing(false);
     }
@@ -627,7 +605,7 @@ const App: React.FC = () => {
         if (editingMember.fullName !== memberData.full_name) { diffsOld.push(`Name: ${editingMember.fullName}`); diffsNew.push(`Name: ${memberData.full_name}`); }
         if (editingMember.totalPaid !== memberData.total_paid) { diffsOld.push(`Paid: ₹${editingMember.totalPaid}`); diffsNew.push(`Paid: ₹${memberData.total_paid}`); }
         if (editingMember.serviceCategory !== memberData.service_category) { diffsOld.push(`Cat: ${editingMember.serviceCategory}`); diffsNew.push(`Cat: ${memberData.service_category}`); }
-        if (editingMember.membershipType !== memberData.membership_type) { diffsOld.push(`Type: ${editingMember.membership_type}`); diffsNew.push(`Type: ${memberData.membership_type}`); }
+        if (editingMember.membershipType !== memberData.membership_type) { diffsOld.push(`Type: ${editingMember.membershipType}`); diffsNew.push(`Type: ${memberData.membership_type}`); }
         if (editingMember.packageId !== memberData.package_id) { 
            const oldP = PACKAGES.find(p => p.id === editingMember.packageId)?.name || 'N/A';
            const newP = PACKAGES.find(p => p.id === memberData.package_id)?.name || 'N/A';
@@ -653,7 +631,23 @@ const App: React.FC = () => {
       }
       
       if (!editingMember) {
-        setEnrollmentSuccess({ id: memberData.id, fullName: memberData.full_name, phoneNumber: memberData.phone_number, email: memberData.email, membershipType: memberData.membership_type as MembershipType, serviceCategory: memberData.service_category as ServiceCategory, packageId: memberData.package_id, joiningDate: memberData.joining_date, expiryDate: memberData.expiry_date, birthdate: memberData.birthdate, gender: memberData.gender as Gender, totalPaid: memberData.total_paid, totalFee: memberData.total_fee, welcomeSent: false, reminderCount: 0 });
+        setEnrollmentSuccess({ 
+          id: memberData.id, 
+          fullName: memberData.full_name, 
+          phoneNumber: memberData.phone_number, 
+          email: memberData.email, 
+          membershipType: memberData.membership_type as MembershipType, 
+          serviceCategory: memberData.service_category as ServiceCategory, 
+          packageId: memberData.package_id, 
+          joiningDate: memberData.joining_date, 
+          expiryDate: memberData.expiry_date, // Fixed property name
+          birthdate: memberData.birthdate, 
+          gender: memberData.gender as Gender, 
+          totalPaid: memberData.total_paid, 
+          totalFee: memberData.total_fee, 
+          welcomeSent: false, 
+          reminderCount: 0 
+        });
       } else { closeEnrollmentFlow(); }
     } catch (err: any) {
       alert('Sync Error: ' + (err.message || JSON.stringify(err)));
@@ -737,6 +731,7 @@ const App: React.FC = () => {
           {!dbMasterKey && !isSyncing && (
             <p className="text-amber-500 text-[10px] font-bold text-center uppercase tracking-widest mt-2 text-center w-full">Connecting to server...</p>
           )}
+          {loginError && <p className="text-red-500 text-[9px] font-black text-center uppercase tracking-widest mt-2">{loginError}</p>}
         </form>
       </div>
     </div>
@@ -960,9 +955,9 @@ const App: React.FC = () => {
                     <div className="flex-1">
                       <h4 className="font-black text-xs uppercase text-slate-800">{member.fullName}</h4>
                       <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">
-                        {member.phoneNumber} • {getRemainingDays(member.expiry_date)}d left
+                        {member.phoneNumber} • {getRemainingDays(member.expiryDate)}d left
                         {pending > 0 && (
-                          <span className="text-red-500 ml-2 font-black italic">Pending: ₹{pending}</span>
+                          <span className="text-red-500 ml-2 font-black italic underline decoration-red-200">Pending: ₹{pending}</span>
                         )}
                       </p>
                     </div>
@@ -1181,7 +1176,6 @@ const App: React.FC = () => {
                           min="0"
                           step="any"
                           onKeyDown={(e) => {
-                            // Strictly block characters that lead to scientific notation or negative values
                             if (['e', 'E', '-', '+'].includes(e.key)) {
                               e.preventDefault();
                             }
