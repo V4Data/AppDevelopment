@@ -4,7 +4,7 @@ import BottomNav from './components/BottomNav.tsx';
 import FormSection from './components/FormSection.tsx';
 import { MembershipType, RegistrationData, NavTab, ServiceCategory, Member, MemberTab, User, LogEntry, Gender } from './types.ts';
 import { PACKAGES } from './constants.ts';
-import { supabase, PROJECT_ID, SUPABASE_ANON_KEY } from './lib/supabase.ts';
+import { supabase, SUPABASE_ANON_KEY } from './lib/supabase.ts';
 import { 
   Search, 
   Plus, 
@@ -421,7 +421,6 @@ const App: React.FC = () => {
 
       if (editingMember) {
         const changes = [];
-        // Note: Replacing '->' with 'to' in strings to avoid TS1382 JSX parser confusion
         if (editingMember.fullName !== memberData.full_name) changes.push(`Name: ${editingMember.fullName} to ${memberData.full_name}`);
         if (editingMember.totalPaid !== memberData.total_paid) changes.push(`Paid: ₹${editingMember.totalPaid} to ₹${memberData.total_paid}`);
         if (editingMember.packageId !== memberData.package_id) changes.push(`Package: ${editingMember.packageId} to ${memberData.package_id}`);
@@ -1255,7 +1254,7 @@ The Cage MMA-Gym & RS Fitness Academy`;
                       <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-1.5 block">Select Package</label>
                       <select value={formData.packageId} onChange={e => setFormData(p => ({...p, packageId: e.target.value}))} className="w-full bg-white border border-slate-100 rounded-2xl px-5 py-4 text-xs font-black outline-none focus:ring-2 focus:ring-slate-200">
                         {filteredPackagesForForm.map(pkg => (
-                          <option key={pkg.id} value={pkg.id}>{pkg.name} — ₹{pkg.price}</option>
+                          <option key={pkg.id} value={pkg.id}>{pkg.name} - ₹{pkg.price}</option>
                         ))}
                       </select>
                     </div>
@@ -1341,7 +1340,8 @@ The Cage MMA-Gym & RS Fitness Academy`;
         {/* Highlighted Creator Credit */}
         <div className="mt-8 mb-4 text-center">
           <p className="text-[9px] font-bold uppercase tracking-widest bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full inline-block shadow-sm border border-emerald-100">
-            created by <span className="font-black">Vishwajeet Bhangare (9595107293)</span>
+            {'created by '}
+            <span className="font-black">Vishwajeet Bhangare (9595107293)</span>
           </p>
         </div>
       </main>
