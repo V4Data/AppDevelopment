@@ -663,9 +663,9 @@ const App: React.FC = () => {
       full_name: formData.fullName,
       phone_number: `+91${phoneDigits}`,
       email: formData.email,
-      membership_type: formData.membership_type,
-      service_category: formData.service_category,
-      package_id: formData.package_id,
+      membership_type: formData.membershipType,
+      service_category: formData.serviceCategory,
+      package_id: formData.packageId,
       joining_date: joining.toISOString(),
       expiry_date: expiry.toISOString(),
       birthdate: formData.birthdate,
@@ -712,7 +712,7 @@ const App: React.FC = () => {
           details: `${currentUser?.name} enrolled ${memberData.full_name}`, 
           memberId: memberData.id, 
           memberName: memberData.full_name,
-          newValue: `Plan: ${PACKAGES.find(p => p.id === memberData.package_id)?.name}, Paid: ₹${memberData.total_paid}`
+          newValue: `Plan: ${PACKAGES.find(p => p.id === memberData.packageId)?.name}, Paid: ₹${memberData.total_paid}`
         });
       }
       
