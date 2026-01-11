@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Header from './components/Header.tsx';
 import BottomNav from './components/BottomNav.tsx';
@@ -15,9 +16,9 @@ const FALLBACK_MASTER_KEY = '959510';
 const MASTER_ADMIN_PHONE = '+919595107293';
 
 const MANAGER_MAP: Record<string, string> = {
-  '9130368298': 'Shrikanth Sir',
-  '9595107293': 'Vishwajeet Sir',
-  '9823733536': 'Radha Mam'
+  '9130368298': 'Shrikant Sathe',
+  '9595107293': 'Vishwajeet Bhangare',
+  '9823733536': 'Radha Shetty'
 };
 
 const ALLOWED_MANAGEMENT_PHONES = Object.keys(MANAGER_MAP);
@@ -380,7 +381,7 @@ const App: React.FC = () => {
           serviceCategory: m.service_category as ServiceCategory,
           packageId: m.package_id,
           joiningDate: m.joining_date,
-          expiryDate: m.expiry_date, // Fixed property name mapping
+          expiryDate: m.expiry_date,
           birthdate: m.birthdate || '2000-01-01',
           gender: (m.gender as Gender) || Gender.MALE,
           totalPaid: Number(m.total_paid || 0),
@@ -414,8 +415,7 @@ const App: React.FC = () => {
 
       const { data: sessionData } = await supabase
         .from('sessions')
-        .select('*')
-        .order('login_time', { ascending: false });
+        .select('*').order('login_time', { ascending: false });
       
       if (sessionData) {
         setSessions(sessionData as ActiveSession[]);
@@ -545,18 +545,37 @@ const App: React.FC = () => {
     }
   };
 
+  const logoutAllExceptMe = async () => {
+    if (!isMasterAdmin) return;
+    if (!confirm(`Log out all other active devices?`)) return;
+    setIsSyncing(true);
+    try {
+      const others = sessions.filter(s => s.id !== currentUser?.sessionId).map(s => s.id);
+      if (others.length > 0) {
+        const { error } = await supabase.from('sessions').delete().in('id', others);
+        if (error) throw error;
+        await addLog({ action: 'ADMIN_LOGOUT_ALL', details: `Master Admin disconnected all other ${others.length} devices` });
+      }
+      fetchData();
+    } catch (err: any) {
+      alert("Failed to disconnect others: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleEnrollment = async () => {
     setEnrollNameError('');
     setEnrollPhoneError('');
     
     if (!formData.fullName.trim()) { 
-      setEnrollNameError('FULL NAME IS MANDATORY'); 
+      setEnrollNameError('Full name is required'); 
       return; 
     }
     
     const phoneDigits = formData.phoneNumber.replace(/\D/g, '');
     if (phoneDigits.length !== 10) { 
-      setEnrollPhoneError('VALID 10-DIGIT WHATSAPP NUMBER IS MANDATORY'); 
+      setEnrollPhoneError('Valid 10-digit WhatsApp number is required'); 
       return; 
     }
 
@@ -640,7 +659,7 @@ const App: React.FC = () => {
           serviceCategory: memberData.service_category as ServiceCategory, 
           packageId: memberData.package_id, 
           joiningDate: memberData.joining_date, 
-          expiryDate: memberData.expiry_date, // Fixed property name
+          expiryDate: memberData.expiry_date, 
           birthdate: memberData.birthdate, 
           gender: memberData.gender as Gender, 
           totalPaid: memberData.total_paid, 
@@ -670,7 +689,15 @@ const App: React.FC = () => {
 
   const sendBirthdayWish = (member: Member) => {
     const phone = member.phoneNumber.replace(/\D/g, '');
-    const text = `*Warmest Birthday Greetings!* 🎂\n\nDear ${member.fullName},\n\nWarmest birthday greetings from all of us at *The Cage MMA-Gym & RS Fitness Academy!*\n\nMay your day be as incredible as your dedication to fitness. Wishing you a year ahead filled with strength, health, success, and prosperity. We are proud to have you as a valued member of our fitness community. 💪\n\nBest Regards,\nThe Management Team\nThe Cage MMA-Gym & RS Fitness Academy`;
+    const text = `Dear ${member.fullName},
+
+Warmest birthday wishes from everyone at The Cage MMA Gym & RS Fitness Academy. We celebrate your commitment to health and fitness and wish you a year ahead filled with strength, good health, success, and prosperity. 
+
+It is our privilege to have you as a valued member of our community.
+
+Best regards,
+The Management Team
+The Cage MMA Gym & RS Fitness Academy`;
     addLog({ action: 'BIRTHDAY_WISH', details: `Birthday wish sent to ${member.fullName}`, memberId: member.id, memberName: member.fullName });
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   };
@@ -678,19 +705,72 @@ const App: React.FC = () => {
   const sendWhatsAppReminder = (member: Member, type: 'expiry' | 'pending' | 'welcome') => {
     const phone = member.phoneNumber.replace(/\D/g, '');
     let text = '';
+    const userName = currentUser?.name || 'Management';
+    
     if (type === 'welcome') {
+      // AUTHORITY RESTRICTION: ONLY VISHWAJEET BHANGARE
+      if (!isMasterAdmin) {
+        alert("Only Vishwajeet Bhangare is authorized to send Welcome Messages.");
+        return;
+      }
       if (member.welcomeSent) { alert("Already sent."); return; }
-      const pkg = PACKAGES.find(p => p.id === member.packageId) || { name: 'Custom' };
-      text = `*Hello ${member.fullName}!*\n\nGreetings from The Cage MMA-Gym & RS Fitness Academy. We are excited to have you join our fitness community! 💪\n\nYour Details:\n• Plan: ${member.serviceCategory} (${pkg.name})\n• Joining: ${formatDateString(member.joiningDate)}\n• Expiry: ${formatDateString(member.expiryDate)}\n\nBest Regards,\nThe Cage MMA-Gym & RS Fitness Academy`;
+      
+      const pkgName = PACKAGES.find(p => p.id === member.packageId)?.name || 'Custom';
+      const pendingFees = member.totalFee - member.totalPaid;
+      
+      text = `Hello ${member.fullName},
+
+Greetings from The Cage MMA Gym & RS Fitness Academy.
+
+My name is ${userName} , and I am contacting you on behalf of our management team. We are delighted to welcome you to our fitness community and look forward to supporting you on your journey toward your health and performance goals.
+
+**Membership Details**
+• Name: ${member.fullName}
+• Plan: ${member.serviceCategory} (${pkgName})
+• Joining Date: ${formatDateString(member.joiningDate)}
+• Expiry Date: ${formatDateString(member.expiryDate)}
+
+**Payment Information** 
+• Fees Paid: ₹${member.totalPaid}
+• Pending Fees: ₹${pendingFees}
+
+**Enrolled By** 
+• Representative: ${userName}
+
+We are committed to providing a safe, professional, and motivating environment. If you have any questions or require assistance, please do not hesitate to contact our front desk.
+
+Warm regards,  
+${userName}  
+The Cage MMA Gym & RS Fitness Academy`;
+
       updateMemberMessageStatus(member.id, { welcome_sent: true });
       addLog({ action: 'WELCOME_SENT', details: `Welcome sent to ${member.fullName}`, memberId: member.id, memberName: member.fullName });
     } else if (type === 'expiry') {
-      text = `Hello ${member.fullName}, your membership at The Cage MMA-Gym & RS Fitness Academy expires in ${getRemainingDays(member.expiryDate)} days. Please visit us for renewal!`;
-      updateMemberMessageStatus(member.id, { reminder_count: member.reminderCount + 1 });
+      const days = getRemainingDays(member.expiryDate);
+      const endDate = formatDateString(member.expiryDate);
+      text = `Hello ${member.fullName},
+ 
+I am ${userName}, representing The Cage MMA Gym & RS Fitness Academy. This is a courtesy reminder that your membership is set to expire in *${days}* days, on *${endDate}*. Please visit the front desk to complete your renewal at your earliest convenience.
+
+Thank you for being a valued member.
+
+Sincerely,
+${userName}
+The Cage MMA Gym & RS Fitness Academy`;
+
+      updateMemberMessageStatus(member.id, { reminder_count: (member.reminderCount || 0) + 1 });
       addLog({ action: 'EXPIRY_REMINDER', details: `Reminder sent to ${member.fullName}`, memberId: member.id, memberName: member.fullName });
     } else {
-      text = `Hello ${member.fullName}, regarding your pending fee of ₹${member.totalFee - member.totalPaid} at The Cage MMA-Gym & RS Fitness Academy. Please clear it soon. Thanks!`;
-      updateMemberMessageStatus(member.id, { reminder_count: member.reminderCount + 1 });
+      const pendingAmount = member.totalFee - member.totalPaid;
+      text = `Hello ${member.fullName},
+
+This is a reminder from The Cage MMA Gym & RS Fitness Academy regarding your outstanding membership fee of *₹${pendingAmount}*. Please settle the balance at your earliest convenience.
+
+Thanks,
+${userName}
+The Cage MMA Gym & RS Fitness Academy`;
+
+      updateMemberMessageStatus(member.id, { reminder_count: (member.reminderCount || 0) + 1 });
       addLog({ action: 'PENDING_REMINDER', details: `Fee reminder sent to ${member.fullName}`, memberId: member.id, memberName: member.fullName });
     }
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
@@ -963,7 +1043,7 @@ const App: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={(e) => { e.stopPropagation(); setEditingMember(member); setFormData({ ...member, phoneNumber: member.phoneNumber.replace('+91',''), paymentReceived: member.totalPaid }); setShowEnrollModal(true); }} className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-slate-100"><Edit2 size={14} /></button>
-                      {!member.welcomeSent && (
+                      {!member.welcomeSent && isMasterAdmin && (
                         <button onClick={() => sendWhatsAppReminder(member, 'welcome')} className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><Send size={14} /></button>
                       )}
                     </div>
@@ -1072,6 +1152,15 @@ const App: React.FC = () => {
                 })}
               </div>
             </div>
+
+            {isMasterAdmin && sessions.length > 1 && (
+              <button 
+                onClick={logoutAllExceptMe}
+                className="w-full bg-red-50 text-red-600 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest border border-red-100 shadow-sm hover:bg-red-100 transition-all flex items-center justify-center gap-2"
+              >
+                <Power size={14} /> Log out all other devices
+              </button>
+            )}
           </div>
         )}
 
@@ -1087,40 +1176,49 @@ const App: React.FC = () => {
                 
                 <FormSection title="Personal Info">
                   <div className="space-y-4">
-                    <div className="relative">
-                      <UserIcon size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" />
-                      <input type="text" placeholder="Full Name (Mandatory)" value={formData.fullName} onChange={e => {
-                        if (validateName(e.target.value)) setFormData(p => ({...p, fullName: e.target.value}));
-                      }} className={`w-full bg-slate-50 border ${enrollNameError ? 'border-red-300' : 'border-slate-100'} rounded-2xl pl-14 pr-5 py-4 font-bold outline-none`} />
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Full Name <span className="text-red-500">*</span></label>
+                      <div className="relative">
+                        <UserIcon size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" />
+                        <input type="text" placeholder="Enter full name" value={formData.fullName} onChange={e => {
+                          if (validateName(e.target.value)) setFormData(p => ({...p, fullName: e.target.value}));
+                        }} className={`w-full bg-slate-50 border ${enrollNameError ? 'border-red-300' : 'border-slate-100'} rounded-2xl pl-14 pr-5 py-4 font-bold outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all`} />
+                      </div>
+                      {enrollNameError && <p className="text-red-500 text-[8px] font-black px-2 uppercase">{enrollNameError}</p>}
                     </div>
-                    {enrollNameError && <p className="text-red-500 text-[8px] font-black px-2 uppercase">{enrollNameError}</p>}
                     
-                    <div className="relative">
-                      <span className="absolute left-5 top-1/2 -translate-y-1/2 text-emerald-500 font-black text-xs">+91</span>
-                      <input type="tel" maxLength={10} value={formData.phoneNumber} onChange={e => {
-                        if (validatePhone(e.target.value)) setFormData(p => ({...p, phoneNumber: e.target.value}));
-                      }} className={`w-full bg-slate-50 border ${enrollPhoneError ? 'border-red-300' : 'border-slate-100'} rounded-2xl pl-14 pr-5 py-4 font-bold outline-none`} placeholder="WhatsApp Number (Mandatory)" />
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-500 ml-1">WhatsApp Number <span className="text-red-500">*</span></label>
+                      <div className="relative">
+                        <span className="absolute left-5 top-1/2 -translate-y-1/2 text-emerald-500 font-black text-xs">+91</span>
+                        <input type="tel" maxLength={10} value={formData.phoneNumber} onChange={e => {
+                          if (validatePhone(e.target.value)) setFormData(p => ({...p, phoneNumber: e.target.value}));
+                        }} className={`w-full bg-slate-50 border ${enrollPhoneError ? 'border-red-300' : 'border-slate-100'} rounded-2xl pl-14 pr-5 py-4 font-bold outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all`} placeholder="Enter 10-digit number" />
+                      </div>
+                      {enrollPhoneError && <p className="text-red-500 text-[8px] font-black px-2 uppercase">{enrollPhoneError}</p>}
                     </div>
-                    {enrollPhoneError && <p className="text-red-500 text-[8px] font-black px-2 uppercase">{enrollPhoneError}</p>}
 
-                    <div className="relative">
-                      <Mail size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" />
-                      <input type="email" placeholder="Email (Optional)" value={formData.email} onChange={e => setFormData(p => ({...p, email: e.target.value}))} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-5 py-4 font-bold outline-none" />
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Email Address</label>
+                      <div className="relative">
+                        <Mail size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" />
+                        <input type="email" placeholder="Enter email" value={formData.email} onChange={e => setFormData(p => ({...p, email: e.target.value}))} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-5 py-4 font-bold outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all" />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[9px] font-black uppercase text-slate-400 mb-1.5 block">Birthdate</label>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Birthdate</label>
                         <div className="relative">
                           <Calendar size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
-                          <input type="date" max={todayStr} value={formData.birthdate} onChange={e => setFormData(p => ({...p, birthdate: e.target.value}))} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-11 pr-3 py-4 font-bold text-xs" />
+                          <input type="date" max={todayStr} value={formData.birthdate} onChange={e => setFormData(p => ({...p, birthdate: e.target.value}))} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-11 pr-3 py-4 font-bold text-xs focus:ring-2 focus:ring-emerald-500/10 transition-all" />
                         </div>
                       </div>
-                      <div>
-                        <label className="text-[9px] font-black uppercase text-slate-400 mb-1.5 block">Gender</label>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Gender</label>
                         <div className="flex gap-2">
                           {(['MALE', 'FEMALE'] as Gender[]).map(g => (
-                            <button key={g} type="button" onClick={() => setFormData(p => ({...p, gender: g}))} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black uppercase border ${formData.gender === g ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-100 text-slate-400'}`}>
+                            <button key={g} type="button" onClick={() => setFormData(p => ({...p, gender: g}))} className={`flex-1 py-3.5 rounded-xl text-[9px] font-black uppercase border transition-all ${formData.gender === g ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'}`}>
                               {g.charAt(0)}
                             </button>
                           ))}
@@ -1131,46 +1229,55 @@ const App: React.FC = () => {
                 </FormSection>
 
                 <FormSection title="Plan Details">
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      {(['SINGLE', 'COUPLE'] as MembershipType[]).map(type => (
-                        <button key={type} type="button" onClick={() => setFormData(p => ({...p, membershipType: type}))} className={`py-3 rounded-xl text-[10px] font-black uppercase border ${formData.membershipType === type ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100'}`}>
-                          {type === 'COUPLE' ? 'Couple/2 Person' : 'Single'}
-                        </button>
-                      ))}
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Membership Type</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {(['SINGLE', 'COUPLE'] as MembershipType[]).map(type => (
+                          <button key={type} type="button" onClick={() => setFormData(p => ({...p, membershipType: type}))} className={`py-3 rounded-xl text-[10px] font-black uppercase border transition-all ${formData.membershipType === type ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
+                            {type === 'COUPLE' ? 'Couple / 2 Person' : 'Single'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      {(['GYM', 'MMA'] as ServiceCategory[]).map(cat => (
-                        <button key={cat} type="button" onClick={() => setFormData(p => ({...p, serviceCategory: cat}))} className={`py-3 rounded-xl text-[10px] font-black uppercase border ${formData.serviceCategory === cat ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100'}`}>
-                          {cat}
-                        </button>
-                      ))}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Service Category</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {(['GYM', 'MMA'] as ServiceCategory[]).map(cat => (
+                          <button key={cat} type="button" onClick={() => setFormData(p => ({...p, serviceCategory: cat}))} className={`py-3 rounded-xl text-[10px] font-black uppercase border transition-all ${formData.serviceCategory === cat ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
-                    <select value={formData.packageId} onChange={e => setFormData(p => ({...p, packageId: e.target.value}))} className="w-full bg-white border border-slate-100 rounded-2xl px-5 py-4 text-xs font-black outline-none">
-                      {filteredPackagesForForm.map(pkg => (
-                        <option key={pkg.id} value={pkg.id}>{pkg.name} - ₹{pkg.price}</option>
-                      ))}
-                    </select>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Select Plan</label>
+                      <select value={formData.packageId} onChange={e => setFormData(p => ({...p, packageId: e.target.value}))} className="w-full bg-white border border-slate-100 rounded-2xl px-5 py-4 text-xs font-black outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all appearance-none">
+                        {filteredPackagesForForm.map(pkg => (
+                          <option key={pkg.id} value={pkg.id}>{pkg.name} - ₹{pkg.price}</option>
+                        ))}
+                      </select>
+                    </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[9px] font-black uppercase text-slate-400 mb-1.5 block">Joining Date</label>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Joining Date</label>
                         <div className="relative">
                           <CalendarDays size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
-                          <input type="date" max={todayStr} value={formData.joiningDate} onChange={e => setFormData(p => ({...p, joiningDate: e.target.value}))} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-11 pr-3 py-4 font-bold text-xs" />
+                          <input type="date" max={todayStr} value={formData.joiningDate} onChange={e => setFormData(p => ({...p, joiningDate: e.target.value}))} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-11 pr-3 py-4 font-bold text-xs focus:ring-2 focus:ring-emerald-500/10 transition-all" />
                         </div>
                       </div>
-                      <div>
-                        <label className="text-[9px] font-black uppercase text-slate-400 mb-1.5 block">Renewal Date</label>
-                        <input type="date" readOnly value={calculatedExpiryDate} className="w-full bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-4 font-bold text-xs text-emerald-700" />
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Renewal Date</label>
+                        <input type="date" readOnly value={calculatedExpiryDate} className="w-full bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-4 font-bold text-xs text-emerald-700 outline-none" />
                       </div>
                     </div>
 
-                    <div className="space-y-4 bg-slate-50 p-4 rounded-3xl border border-slate-100">
-                      <div>
-                        <label className="text-[9px] font-black uppercase text-slate-400 mb-1.5 block">Paid Amount (₹)</label>
+                    <div className="space-y-4 bg-slate-50 p-5 rounded-3xl border border-slate-100">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Paid Amount (₹) <span className="text-red-500">*</span></label>
                         <input 
                           type="number" 
                           min="0"
@@ -1192,31 +1299,41 @@ const App: React.FC = () => {
                               }
                             }
                           }} 
-                          className="w-full bg-white border border-slate-100 rounded-2xl px-5 py-4 font-black outline-none" 
+                          className="w-full bg-white border border-slate-100 rounded-2xl px-5 py-4 font-black outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all" 
                           placeholder="Amount Paid" 
                         />
                       </div>
-                      <div className="flex items-center justify-between px-2 pt-2 border-t">
-                        <span className="text-[9px] font-black uppercase text-slate-400">Total: ₹{selectedPackageData.price}</span>
+                      <div className="flex items-center justify-between px-2 pt-2 border-t border-slate-200">
+                        <span className="text-[9px] font-black uppercase text-slate-400">Package Total: ₹{selectedPackageData.price}</span>
                         <span className={`text-sm font-black ${pendingAmount > 0 ? 'text-red-500' : 'text-emerald-500'}`}>Pending: ₹{pendingAmount}</span>
                       </div>
                     </div>
                   </div>
                 </FormSection>
 
-                <button onClick={handleEnrollment} disabled={isSyncing} className="w-full bg-slate-900 text-white py-6 rounded-3xl font-black shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-transform disabled:opacity-50">
-                  {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : <ShieldCheck size={20} />}
-                  {isSyncing ? 'SYNCING...' : editingMember ? 'UPDATE' : 'ENROLL'}
+                <button onClick={handleEnrollment} disabled={isSyncing} className="w-full bg-slate-900 text-white py-6 rounded-3xl font-black shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all disabled:opacity-50">
+                  {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : (editingMember ? <Edit2 size={20} /> : <ShieldCheck size={20} />)}
+                  {isSyncing ? 'SYNCING...' : editingMember ? 'UPDATE MEMBER' : 'ENROLL MEMBER'}
                 </button>
               </div>
             ) : (
               <div className="text-center py-10 space-y-6">
-                <div className="bg-emerald-50 w-24 h-24 rounded-full flex items-center justify-center mx-auto text-emerald-500"><ShieldCheck size={48} /></div>
+                <div className="bg-emerald-50 w-24 h-24 rounded-full flex items-center justify-center mx-auto text-emerald-500 animate-bounce"><ShieldCheck size={48} /></div>
                 <div>
-                  <h3 className="text-2xl font-black uppercase">Success</h3>
-                  <p className="text-slate-400 text-[10px] font-bold uppercase">Record Updated Successfully</p>
+                  <h3 className="text-2xl font-black uppercase text-slate-800">Enrollment Complete</h3>
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">Cloud synchronization successful</p>
                 </div>
-                <button onClick={closeEnrollmentFlow} className="w-full bg-emerald-500 text-white py-5 rounded-3xl font-black active:scale-95">OK</button>
+                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-left space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-[10px] font-black text-slate-400 uppercase">Member:</span>
+                    <span className="text-[10px] font-black text-slate-800 uppercase">{enrollmentSuccess.fullName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[10px] font-black text-slate-400 uppercase">Paid:</span>
+                    <span className="text-[10px] font-black text-emerald-600 uppercase">₹{enrollmentSuccess.totalPaid}</span>
+                  </div>
+                </div>
+                <button onClick={closeEnrollmentFlow} className="w-full bg-emerald-500 text-white py-5 rounded-3xl font-black shadow-lg shadow-emerald-500/20 active:scale-95 transition-all">CLOSE</button>
               </div>
             )}
           </div>
