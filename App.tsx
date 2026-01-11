@@ -9,7 +9,8 @@ import { supabase, SUPABASE_ANON_KEY } from './lib/supabase.ts';
 import { 
   Search, Plus, X, ArrowRight, ShieldCheck, MessageCircle, BarChart3, Edit2, RefreshCw, Clock,
   User as UserIcon, Database, Calendar, CalendarDays,
-  Bell, Send, Cake, Gift, Smartphone, Power, IndianRupee, Mail
+  Bell, Send, Cake, Gift, Smartphone, Power, IndianRupee, Mail, CheckCircle2, Lock, Trash2,
+  Users
 } from 'lucide-react';
 
 const FALLBACK_MASTER_KEY = '959510';
@@ -33,7 +34,7 @@ const getDeviceType = () => {
 const getDeviceId = () => {
   let id = localStorage.getItem('thecage_device_uid');
   if (!id) {
-    id = 'UID-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    id = 'TC-DEV-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     localStorage.setItem('thecage_device_uid', id);
   }
   return id;
@@ -63,6 +64,7 @@ const App: React.FC = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
+  const [authorizedDevices, setAuthorizedDevices] = useState<any[]>([]);
 
   const [loginPhone, setLoginPhone] = useState('');
   const [loginMasterKey, setLoginMasterKey] = useState('');
@@ -86,7 +88,7 @@ const App: React.FC = () => {
     paymentReceived: 0,
   });
 
-  const isMasterAdmin = currentUser?.phoneNumber === MASTER_ADMIN_PHONE;
+  const isMasterAdmin = useMemo(() => currentUser?.phoneNumber === MASTER_ADMIN_PHONE, [currentUser]);
   const isConfigMissing = SUPABASE_ANON_KEY.includes('YOUR_ACTUAL_LONG');
 
   const addLog = useCallback(async (params: {
@@ -420,6 +422,12 @@ const App: React.FC = () => {
       if (sessionData) {
         setSessions(sessionData as ActiveSession[]);
       }
+
+      // Load Authorized Device Bindings for Master Admin
+      if (isMasterAdmin) {
+        const { data: devData } = await supabase.from('authorized_devices').select('*');
+        if (devData) setAuthorizedDevices(devData);
+      }
     } catch (err: any) {
       const errMsg = err.message || JSON.stringify(err);
       if (errMsg.includes('column') || errMsg.includes('schema cache')) setSchemaError(true);
@@ -427,7 +435,7 @@ const App: React.FC = () => {
     } finally {
       setIsSyncing(false);
     }
-  }, [currentUser, isConfigMissing]);
+  }, [currentUser, isConfigMissing, isMasterAdmin]);
 
   useEffect(() => {
     if (!currentUser?.sessionId || isConfigMissing) return;
@@ -489,36 +497,78 @@ const App: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError('');
     const phoneClean = loginPhone.replace(/\D/g, '');
     const phone10 = phoneClean.slice(-10);
+    const fullPhone = `+91${phone10}`;
     const activeMasterKey = dbMasterKey || FALLBACK_MASTER_KEY;
+    const currentDeviceId = getDeviceId();
     
     if (loginMasterKey === activeMasterKey && ALLOWED_MANAGEMENT_PHONES.includes(phone10)) {
       setIsSyncing(true);
-      const derivedName = MANAGER_MAP[phone10];
-      let ip = 'Unknown';
-      try {
-        const ipRes = await fetch('https://api.ipify.org?format=json');
-        const ipData = await ipRes.json();
-        ip = ipData.ip;
-      } catch (err) { console.error("IP Fetch failed", err); }
-
-      const sessionObj = {
-        user_phone: `+91${phone10}`,
-        user_name: derivedName,
-        device_type: getDeviceType(),
-        ip_address: ip,
-        device_id: getDeviceId(),
-        login_time: new Date().toISOString()
-      };
 
       try {
+        let ip = 'Unknown';
+        try {
+          const ipRes = await fetch('https://api.ipify.org?format=json');
+          const ipData = await ipRes.json();
+          ip = ipData.ip;
+        } catch (err) { console.error("IP Fetch failed", err); }
+
+        // --- HARDWARE DEVICE BINDING SECURITY ---
+        const { data: binding, error: bindErr } = await supabase
+          .from('authorized_devices')
+          .select('*')
+          .eq('user_phone', fullPhone)
+          .maybeSingle();
+        
+        if (bindErr) throw bindErr;
+
+        const isVishwajeet = fullPhone === MASTER_ADMIN_PHONE;
+
+        if (!binding) {
+          // FIRST LOGIN: Bind this hardware permanently with IP
+          await supabase.from('authorized_devices').insert({
+            user_phone: fullPhone,
+            device_id: currentDeviceId,
+            ip_address: ip
+          });
+        } else if (binding.device_id !== currentDeviceId) {
+          if (isVishwajeet) {
+            // MASTER ADMIN AUTO-REPAIR: If Vishwajeet's ID changed (browser update), auto-update it
+            await supabase.from('authorized_devices')
+              .update({ device_id: currentDeviceId, ip_address: ip })
+              .eq('user_phone', fullPhone);
+            await addLog({
+              action: 'ADMIN_REBIND',
+              details: `Vishwajeet automatically updated his hardware link (IP: ${ip})`,
+              userOverride: { phoneNumber: fullPhone, name: 'Vishwajeet Bhangare', loginTime: new Date().toISOString() }
+            });
+          } else {
+            // WRONG DEVICE: Block login for others
+            setLoginError("SECURITY: This phone is not authorized for this account. Contact Vishwajeet for a reset.");
+            setIsSyncing(false);
+            return;
+          }
+        }
+
+        const derivedName = MANAGER_MAP[phone10];
+        const sessionObj = {
+          user_phone: fullPhone,
+          user_name: derivedName,
+          device_type: getDeviceType(),
+          ip_address: ip,
+          device_id: currentDeviceId,
+          login_time: new Date().toISOString()
+        };
+
         const { data, error } = await supabase.from('sessions').insert(sessionObj).select().single();
         if (error) throw error;
+        
         const user: User = { phoneNumber: sessionObj.user_phone, name: derivedName, sessionId: data.id, loginTime: sessionObj.login_time };
         setCurrentUser(user);
         localStorage.setItem('thecage_session', JSON.stringify(user));
-        await addLog({ action: 'LOGIN', details: `${user.name} logged in from ${sessionObj.device_type} (IP: ${ip})`, userOverride: user });
+        await addLog({ action: 'SECURE_LOGIN', details: `${user.name} logged in from authorized hardware (IP: ${ip})`, userOverride: user });
       } catch (err: any) {
         setLoginError("Login failed: " + err.message);
       } finally {
@@ -564,6 +614,23 @@ const App: React.FC = () => {
     }
   };
 
+  const resetHardwareBinding = async (userPhone: string, userName: string) => {
+    if (!isMasterAdmin) return;
+    if (!confirm(`Unbind ${userName}'s phone? This will allow them to register a new phone on their next login.`)) return;
+    
+    setIsSyncing(true);
+    try {
+      await supabase.from('authorized_devices').delete().eq('user_phone', userPhone);
+      await addLog({ action: 'DEVICE_UNBIND', details: `Master Admin reset hardware binding for ${userName}` });
+      fetchData();
+      alert(`Success: ${userName}'s account is now unlocked for a new device.`);
+    } catch (err) {
+      alert("Reset failed. Check connection.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleEnrollment = async () => {
     setEnrollNameError('');
     setEnrollPhoneError('');
@@ -596,9 +663,9 @@ const App: React.FC = () => {
       full_name: formData.fullName,
       phone_number: `+91${phoneDigits}`,
       email: formData.email,
-      membership_type: formData.membershipType,
-      service_category: formData.serviceCategory,
-      package_id: formData.packageId,
+      membership_type: formData.membership_type,
+      service_category: formData.service_category,
+      package_id: formData.package_id,
       joining_date: joining.toISOString(),
       expiry_date: expiry.toISOString(),
       birthdate: formData.birthdate,
@@ -708,7 +775,6 @@ The Cage MMA Gym & RS Fitness Academy`;
     const userName = currentUser?.name || 'Management';
     
     if (type === 'welcome') {
-      // AUTHORITY RESTRICTION: ONLY VISHWAJEET BHANGARE
       if (!isMasterAdmin) {
         alert("Only Vishwajeet Bhangare is authorized to send Welcome Messages.");
         return;
@@ -789,29 +855,50 @@ The Cage MMA Gym & RS Fitness Academy`;
   );
 
   if (!currentUser) return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
-      <div className="w-full max-sm bg-white p-10 rounded-[40px] shadow-2xl">
-        <div className="bg-emerald-500 w-16 h-16 rounded-3xl flex items-center justify-center mb-8 mx-auto text-white shadow-lg">
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
+      <div className="w-full max-sm bg-white p-10 rounded-[40px] shadow-2xl overflow-hidden">
+        <div className="bg-emerald-500 w-16 h-16 rounded-3xl flex items-center justify-center mb-6 mx-auto text-white shadow-lg">
           <ShieldCheck size={32} />
         </div>
-        <h2 className="text-2xl font-black mb-2 text-center uppercase tracking-tight text-slate-800">Sign In</h2>
+        <h2 className="text-2xl font-black mb-1 text-center uppercase tracking-tight text-slate-800">Sign In</h2>
         <p className="text-[10px] text-slate-400 font-bold text-center uppercase tracking-widest mb-8">Management Access Only</p>
+        
+        <div className="mb-8">
+           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4 text-center">Authorized Personnel (Tap to enter)</p>
+           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+              {Object.entries(MANAGER_MAP).map(([phone, name]) => (
+                <button 
+                  key={phone} 
+                  onClick={() => setLoginPhone(phone)}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-3xl border transition-all shrink-0 min-w-[110px] ${loginPhone === phone ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-slate-50 border-slate-100'}`}
+                >
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-colors ${loginPhone === phone ? 'bg-emerald-500 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                    {loginPhone === phone ? <CheckCircle2 size={18} /> : name.charAt(0)}
+                  </div>
+                  <span className={`text-[8px] font-black uppercase tracking-tight text-center leading-tight ${loginPhone === phone ? 'text-white' : 'text-slate-600'}`}>
+                    {name.split(' ')[0]}<br/>{name.split(' ')[1]}
+                  </span>
+                </button>
+              ))}
+           </div>
+        </div>
+
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="relative">
             <UserIcon size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input type="tel" required value={loginPhone} maxLength={13} onChange={e => setLoginPhone(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-5 py-4 font-bold text-black focus:ring-2 focus:ring-emerald-500/50 outline-none" placeholder="Manager Phone" />
+            <input type="tel" required value={loginPhone} maxLength={13} onChange={e => setLoginPhone(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-5 py-4 font-bold text-black focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all" placeholder="Manager Phone" />
           </div>
           <div className="relative">
             <ShieldCheck size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input name="masterKey" type="password" required value={loginMasterKey} onChange={e => setLoginMasterKey(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-5 py-4 font-black text-black focus:ring-2 focus:ring-emerald-500/50 outline-none" placeholder="Master Key" />
           </div>
           <button disabled={isSyncing || !dbMasterKey} className="w-full bg-emerald-500 text-white py-5 rounded-3xl font-black active:scale-[0.98] transition-all shadow-lg shadow-emerald-500/20 mt-4 flex items-center justify-center gap-2 disabled:opacity-50">
-            {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : 'SUBMIT'}
+            {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : 'AUTHENTICATE'}
           </button>
           {!dbMasterKey && !isSyncing && (
             <p className="text-amber-500 text-[10px] font-bold text-center uppercase tracking-widest mt-2 text-center w-full">Connecting to server...</p>
           )}
-          {loginError && <p className="text-red-500 text-[9px] font-black text-center uppercase tracking-widest mt-2">{loginError}</p>}
+          {loginError && <p className="text-red-600 text-[9px] font-black text-center uppercase tracking-widest mt-2 bg-red-50 p-3 rounded-xl border border-red-100 leading-relaxed">{loginError}</p>}
         </form>
       </div>
     </div>
@@ -865,7 +952,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                 <div className="flex items-center gap-2">
                   <div className="bg-pink-50 p-2 rounded-xl text-pink-500"><Gift size={18} /></div>
                   <div>
-                    <h3 className="text-xs font-black uppercase tracking-tight text-slate-800">Birthdays</h3>
+                    <h3 className="text-lg font-black uppercase tracking-tight text-slate-800">Birthdays</h3>
                     <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Celebrate Our Family</p>
                   </div>
                 </div>
@@ -885,7 +972,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                         <Cake size={16} className="text-pink-400" />
                       </div>
                       <div>
-                        <h4 className="text-[10px] font-black uppercase text-slate-800">{member.fullName}</h4>
+                        <h4 className="text-[15px] font-black uppercase text-slate-800">{member.fullName}</h4>
                         <p className="text-[8px] font-bold text-slate-400 uppercase">{member.phoneNumber}</p>
                       </div>
                     </div>
@@ -907,7 +994,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                 <div className="flex items-center gap-2">
                   <div className={`bg-${alertCenterTab === 'RENEWAL' ? 'amber' : 'red'}-50 p-2 rounded-xl text-${alertCenterTab === 'RENEWAL' ? 'amber' : 'red'}-500`}><Bell size={18} /></div>
                   <div>
-                    <h3 className="text-xs font-black uppercase tracking-tight text-slate-800">Alert Center</h3>
+                    <h3 className="text-lg font-black uppercase tracking-tight text-slate-800">Alert Center</h3>
                     <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Actions Required</p>
                   </div>
                 </div>
@@ -924,29 +1011,33 @@ The Cage MMA Gym & RS Fitness Academy`;
                 {alertCenterTab === 'RENEWAL' ? (
                   <>
                     <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                      <div className="min-w-[140px] bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
-                        <span className="text-[8px] font-black text-amber-600 uppercase block mb-1">Within 7 Days</span>
+                      <div className="min-w-[140px] bg-red-50/50 p-4 rounded-2xl border border-red-100">
+                        <span className="text-[8px] font-black text-red-600 uppercase block mb-1">Within 7 Days</span>
                         <span className="text-xl font-black text-slate-900">{homeReminders.m7.length}</span>
                       </div>
-                      <div className="min-w-[140px] bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                        <span className="text-[8px] font-black text-slate-400 uppercase block mb-1">Next 15 Days</span>
+                      <div className="min-w-[140px] bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
+                        <span className="text-[8px] font-black text-amber-600 uppercase block mb-1">Next 15 Days</span>
                         <span className="text-xl font-black text-slate-900">{homeReminders.m15.length}</span>
                       </div>
                     </div>
-                    {[...homeReminders.m7, ...homeReminders.m15].map(member => (
-                      <div key={member.id} className="flex items-center justify-between p-3.5 bg-white border border-slate-100 rounded-2xl">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-[11px] ${getRemainingDays(member.expiryDate) <= 7 ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                            {getRemainingDays(member.expiryDate)}d
+                    {[...homeReminders.m7, ...homeReminders.m15].map(member => {
+                      const daysLeft = getRemainingDays(member.expiryDate);
+                      const isPriority1 = daysLeft <= 7;
+                      return (
+                        <div key={member.id} className="flex items-center justify-between p-3.5 bg-white border border-slate-100 rounded-2xl">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-[11px] ${isPriority1 ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'}`}>
+                              {daysLeft}d
+                            </div>
+                            <div>
+                              <h4 className="text-[15px] font-black uppercase text-slate-800">{member.fullName}</h4>
+                              <p className="text-[12px] font-bold text-slate-400 uppercase">Reminders: {member.reminderCount}</p>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="text-[10px] font-black uppercase text-slate-800">{member.fullName}</h4>
-                            <p className="text-[8px] font-bold text-slate-400 uppercase">Reminders: {member.reminderCount}</p>
-                          </div>
+                          <button onClick={() => sendWhatsAppReminder(member, 'expiry')} className={`p-2.5 ${isPriority1 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'} rounded-xl`}><MessageCircle size={14} /></button>
                         </div>
-                        <button onClick={() => sendWhatsAppReminder(member, 'expiry')} className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><MessageCircle size={14} /></button>
-                      </div>
-                    ))}
+                      )
+                    })}
                     {[...homeReminders.m7, ...homeReminders.m15].length === 0 && (
                       <div className="text-center py-6 text-[9px] font-black text-slate-300 uppercase tracking-widest">No upcoming expiries</div>
                     )}
@@ -960,9 +1051,9 @@ The Cage MMA Gym & RS Fitness Academy`;
                             {member.fullName.charAt(0)}
                           </div>
                           <div>
-                            <h4 className="text-[10px] font-black uppercase text-slate-800">{member.fullName}</h4>
-                            <p className="text-[8px] font-black text-red-600 uppercase">Balance: ₹{member.totalFee - member.totalPaid}</p>
-                            <p className="text-[7px] font-bold text-slate-400 uppercase">Reminders: {member.reminderCount}</p>
+                            <h4 className="text-[15px] font-black uppercase text-slate-800">{member.fullName}</h4>
+                            <p className="text-[12px] font-black text-red-600 uppercase">Balance: ₹{member.totalFee - member.totalPaid}</p>
+                            <p className="text-[11px] font-bold text-slate-400 uppercase">Reminders: {member.reminderCount}</p>
                           </div>
                         </div>
                         <button onClick={() => sendWhatsAppReminder(member, 'pending')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase shadow-lg shadow-emerald-500/20">
@@ -1012,44 +1103,79 @@ The Cage MMA Gym & RS Fitness Academy`;
 
         {activeTab === 'MEMBERS' && (
           <div className="space-y-6">
+            <div className="bg-indigo-600 rounded-[2.5rem] p-8 text-white flex justify-between items-center shadow-2xl relative overflow-hidden">
+               <div className="z-10">
+                 <h2 className="text-2xl font-black uppercase leading-none tracking-tight">Members</h2>
+                 <p className="text-[10px] text-indigo-200 font-black uppercase mt-1 tracking-widest">
+                   {members.filter(m => getRemainingDays(m.expiryDate) >= 0).length} Active • {members.filter(m => getRemainingDays(m.expiryDate) < 0).length} Expired
+                 </p>
+               </div>
+               <button onClick={() => setShowEnrollModal(true)} className="w-14 h-14 bg-white text-indigo-600 rounded-3xl flex items-center justify-center shadow-lg active:scale-90 transition-all z-10"><Plus size={28} /></button>
+               <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl"></div>
+            </div>
+
             <div className="sticky top-16 bg-slate-50/95 backdrop-blur-sm z-30 pt-4 pb-2">
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center gap-3 mb-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input type="text" placeholder="Search members..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3.5 text-sm font-bold shadow-sm focus:outline-none" />
+                  <input type="text" placeholder="Search by name or phone..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-white border border-slate-200 rounded-[1.5rem] pl-12 pr-4 py-4 text-sm font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all" />
                 </div>
-                <button onClick={() => setShowEnrollModal(true)} className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg"><Plus size={24} /></button>
               </div>
               <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                 {(['ALL', 'ACTIVE', 'INACTIVE', '7DAYS', '15DAYS'] as MemberTab[]).map(tab => (
-                  <button key={tab} onClick={() => setMemberTab(tab)} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all shrink-0 ${memberTab === tab ? 'bg-slate-900 text-white' : 'bg-white text-slate-400 border-slate-100'}`}>{tab}</button>
+                  <button key={tab} onClick={() => setMemberTab(tab)} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider border transition-all shrink-0 ${memberTab === tab ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-100'}`}>{tab}</button>
                 ))}
               </div>
             </div>
-            <div className="space-y-3 pb-20">
+
+            <div className="space-y-4 pb-20">
               {filteredMembers.map(member => {
+                const daysLeft = getRemainingDays(member.expiryDate);
                 const pending = member.totalFee - member.totalPaid;
+                
+                let statusColor = 'bg-emerald-50 border-emerald-100 text-emerald-600';
+                let iconColor = 'bg-emerald-500 text-white';
+                
+                if (daysLeft < 0) {
+                  statusColor = 'bg-red-50 border-red-100 text-red-600';
+                  iconColor = 'bg-red-500 text-white';
+                } else if (daysLeft <= 7) {
+                  statusColor = 'bg-red-50 border-red-100 text-red-600';
+                  iconColor = 'bg-red-500 text-white';
+                } else if (daysLeft <= 15) {
+                  statusColor = 'bg-amber-50 border-amber-100 text-amber-600';
+                  iconColor = 'bg-amber-500 text-white';
+                }
+
                 return (
-                  <div key={member.id} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-600 uppercase text-lg border border-slate-100">{member.fullName.charAt(0)}</div>
-                    <div className="flex-1">
-                      <h4 className="font-black text-xs uppercase text-slate-800">{member.fullName}</h4>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">
-                        {member.phoneNumber} • {getRemainingDays(member.expiryDate)}d left
-                        {pending > 0 && (
-                          <span className="text-red-500 ml-2 font-black italic underline decoration-red-200">Pending: ₹{pending}</span>
-                        )}
-                      </p>
+                  <div key={member.id} className={`border rounded-[2rem] p-5 shadow-sm flex items-center gap-4 transition-all active:scale-[0.98] ${statusColor}`}>
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black uppercase text-xl shadow-md ${iconColor}`}>
+                      {member.fullName.charAt(0)}
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={(e) => { e.stopPropagation(); setEditingMember(member); setFormData({ ...member, phoneNumber: member.phoneNumber.replace('+91',''), paymentReceived: member.totalPaid }); setShowEnrollModal(true); }} className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-slate-100"><Edit2 size={14} /></button>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-black text-[13px] uppercase truncate">{member.fullName}</h4>
+                      <p className="text-[10px] font-bold uppercase opacity-60 mt-0.5">
+                        {member.phoneNumber} • {daysLeft < 0 ? 'EXPIRED' : `${daysLeft} days left`}
+                      </p>
+                      {pending > 0 && (
+                        <p className="text-[9px] font-black mt-1 bg-white/50 px-2 py-0.5 rounded-full inline-block border border-red-200 text-red-600">PENDING: ₹{pending}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); setEditingMember(member); setFormData({ ...member, phoneNumber: member.phoneNumber.replace('+91',''), paymentReceived: member.totalPaid }); setShowEnrollModal(true); }} className="p-3 bg-white text-slate-600 rounded-2xl shadow-sm hover:scale-110 transition-transform"><Edit2 size={16} /></button>
                       {!member.welcomeSent && isMasterAdmin && (
-                        <button onClick={() => sendWhatsAppReminder(member, 'welcome')} className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><Send size={14} /></button>
+                        <button onClick={() => sendWhatsAppReminder(member, 'welcome')} className="p-3 bg-indigo-500 text-white rounded-2xl shadow-sm hover:scale-110 transition-transform"><Send size={16} /></button>
                       )}
                     </div>
                   </div>
                 );
               })}
+              {filteredMembers.length === 0 && (
+                <div className="text-center py-20 bg-slate-100/50 rounded-[3rem] border-2 border-dashed border-slate-200">
+                  <Users className="mx-auto text-slate-300 mb-4" size={48} />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">No members found</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1113,7 +1239,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-white uppercase tracking-tight leading-none">Connected Devices</h3>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Active Management Sessions</p>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">Active Management Sessions {isMasterAdmin && "(Admin Mode)"}</p>
                 </div>
               </div>
               <div className="text-3xl font-black text-white px-4 border-l border-white/10">
@@ -1141,7 +1267,6 @@ The Cage MMA Gym & RS Fitness Academy`;
                             {isCurrent && <span className="text-[7px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-tighter shadow-sm">Current Device</span>}
                           </div>
                           <p className="text-[8px] font-bold text-slate-400 uppercase">{session.device_type} • {session.ip_address}</p>
-                          <p className="text-[7px] text-slate-300 mt-1 uppercase font-bold">UID: {session.device_id.slice(-8)}</p>
                         </div>
                       </div>
                       {isMasterAdmin && !isCurrent && (
@@ -1152,6 +1277,47 @@ The Cage MMA Gym & RS Fitness Academy`;
                 })}
               </div>
             </div>
+
+            {isMasterAdmin && (
+              <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+                <div className="flex items-center gap-2 mb-6">
+                  <Lock size={18} className="text-amber-500" />
+                  <div>
+                    <h3 className="text-xs font-black uppercase text-slate-800">Hardware Bindings</h3>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Master Admin Override Only</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {authorizedDevices.map((dev) => {
+                    const managerName = MANAGER_MAP[dev.user_phone.slice(-10)] || 'Unknown';
+                    return (
+                      <div key={dev.id} className="p-4 rounded-2xl border border-slate-100 bg-slate-50/30 flex items-center justify-between group">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-slate-300 border border-slate-100">
+                            <Smartphone size={16} />
+                          </div>
+                          <div>
+                            <h4 className="text-[10px] font-black uppercase text-slate-800">{managerName}</h4>
+                            <p className="text-[8px] font-bold text-slate-400 uppercase">{dev.user_phone}</p>
+                            <p className="text-[7px] text-slate-300 uppercase font-black tracking-tighter mt-1">IP: {dev.ip_address || 'N/A'}</p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => resetHardwareBinding(dev.user_phone, managerName)}
+                          className="p-2.5 bg-red-50 text-red-400 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity active:scale-90"
+                          title="Reset Device Binding"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {authorizedDevices.length === 0 && (
+                    <div className="text-center py-6 text-[9px] font-black text-slate-300 uppercase tracking-widest">No active hardware links</div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {isMasterAdmin && sessions.length > 1 && (
               <button 
@@ -1279,24 +1445,14 @@ The Cage MMA Gym & RS Fitness Academy`;
                       <div className="space-y-2">
                         <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Paid Amount (₹) <span className="text-red-500">*</span></label>
                         <input 
-                          type="number" 
-                          min="0"
-                          step="any"
-                          onKeyDown={(e) => {
-                            if (['e', 'E', '-', '+'].includes(e.key)) {
-                              e.preventDefault();
-                            }
-                          }}
-                          value={formData.paymentReceived || ''} 
+                          type="text" 
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={formData.paymentReceived === 0 ? '' : formData.paymentReceived} 
                           onChange={e => {
                             const val = e.target.value;
-                            if (val === '') {
-                              setFormData(p => ({...p, paymentReceived: 0}));
-                            } else {
-                              const n = parseFloat(val);
-                              if (!isNaN(n)) {
-                                setFormData(p => ({...p, paymentReceived: Math.max(0, n)}));
-                              }
+                            if (val === '' || /^\d+$/.test(val)) {
+                              setFormData(p => ({...p, paymentReceived: val === '' ? 0 : parseInt(val, 10)}));
                             }
                           }} 
                           className="w-full bg-white border border-slate-100 rounded-2xl px-5 py-4 font-black outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all" 
