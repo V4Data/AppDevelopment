@@ -1,20 +1,21 @@
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Header from './components/Header.tsx';
 import BottomNav from './components/BottomNav.tsx';
 import FormSection from './components/FormSection.tsx';
 import { MembershipType, RegistrationData, NavTab, ServiceCategory, Member, MemberTab, User, LogEntry, Gender, ActiveSession } from './types.ts';
 import { PACKAGES } from './constants.ts';
-import { supabase, SUPABASE_ANON_KEY } from './lib/supabase.ts';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './lib/supabase.ts';
 import { 
   Search, Plus, X, ArrowRight, ShieldCheck, MessageCircle, BarChart3, Edit2, RefreshCw, Clock,
   User as UserIcon, Database, Calendar, CalendarDays,
   Bell, Send, Cake, Gift, Smartphone, Power, IndianRupee, Mail, CheckCircle2, Lock, Trash2,
-  Users
+  Users, AlertTriangle, Settings
 } from 'lucide-react';
 
-const FALLBACK_MASTER_KEY = '959510';
-const MASTER_ADMIN_PHONE = '+919595107293';
+// @ts-ignore
+const MASTER_KEY = import.meta.env?.VITE_MASTER_KEY || '';
+// @ts-ignore
+const MASTER_ADMIN_PHONE = import.meta.env?.VITE_MASTER_ADMIN_PHONE || '';
 
 const MANAGER_MAP: Record<string, string> = {
   '9130368298': 'Shrikant Sathe',
