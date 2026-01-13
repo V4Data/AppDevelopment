@@ -9,7 +9,7 @@ import {
   Search, Plus, X, ArrowRight, ShieldCheck, MessageCircle, BarChart3, Edit2, RefreshCw, Clock,
   User as UserIcon, Database, Calendar, CalendarDays,
   Bell, Send, Cake, Gift, Smartphone, Power, IndianRupee, Mail, CheckCircle2, Lock, Trash2,
-  Users, AlertTriangle, Settings
+  Users
 } from 'lucide-react';
 
 // @ts-ignore
