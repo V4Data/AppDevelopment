@@ -18,22 +18,24 @@ import { createClient } from '@supabase/supabase-js';
  * ALTER TABLE logs ADD COLUMN IF NOT EXISTS old_value TEXT;
  * ALTER TABLE logs ADD COLUMN IF NOT EXISTS new_value TEXT;
  *
- * -- 3. Authorized Devices Table (Includes requested IP column)
+ * -- 3. Authorized Devices Table (Using Device ID for binding - NO IP)
  * CREATE TABLE IF NOT EXISTS authorized_devices (
  *   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
  *   user_phone TEXT UNIQUE NOT NULL,
  *   device_id TEXT NOT NULL,
- *   ip_address TEXT,
  *   created_at TIMESTAMPTZ DEFAULT now()
  * );
  *
  * -- 4. RLS FIX (Ensures Master Admin can delete any session)
- * -- This allows the "Remove Device" feature to work correctly.
  * ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
  * CREATE POLICY "Enable delete for all users" ON sessions FOR DELETE USING (true);
  * CREATE POLICY "Enable insert for all users" ON sessions FOR INSERT WITH CHECK (true);
  * CREATE POLICY "Enable select for all users" ON sessions FOR SELECT USING (true);
  * CREATE POLICY "Enable update for all users" ON sessions FOR UPDATE USING (true) WITH CHECK (true);
+ *
+ * -- 5. Sessions Table Update (Use device_id, ensure no ip_address constraint)
+ * -- Run these if your sessions table already exists:
+ * -- ALTER TABLE sessions DROP COLUMN IF EXISTS ip_address;
  *
  * -- CRITICAL: Force the API to refresh its column list
  * NOTIFY pgrst, 'reload schema';

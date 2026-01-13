@@ -508,14 +508,7 @@ const App: React.FC = () => {
       setIsSyncing(true);
 
       try {
-        let ip = 'Unknown';
-        try {
-          const ipRes = await fetch('https://api.ipify.org?format=json');
-          const ipData = await ipRes.json();
-          ip = ipData.ip;
-        } catch (err) { console.error("IP Fetch failed", err); }
-
-        // --- HARDWARE DEVICE BINDING SECURITY ---
+        // --- HARDWARE DEVICE BINDING SECURITY (EXCLUSIVELY DEVICE ID) ---
         const { data: binding, error: bindErr } = await supabase
           .from('authorized_devices')
           .select('*')
@@ -527,21 +520,20 @@ const App: React.FC = () => {
         const isVishwajeet = fullPhone === MASTER_ADMIN_PHONE;
 
         if (!binding) {
-          // FIRST LOGIN: Bind this hardware permanently with IP
+          // FIRST LOGIN: Bind this hardware permanently with Device ID
           await supabase.from('authorized_devices').insert({
             user_phone: fullPhone,
-            device_id: currentDeviceId,
-            ip_address: ip
+            device_id: currentDeviceId
           });
         } else if (binding.device_id !== currentDeviceId) {
           if (isVishwajeet) {
-            // MASTER ADMIN AUTO-REPAIR: If Vishwajeet's ID changed (browser update), auto-update it
+            // MASTER ADMIN AUTO-REPAIR: If Vishwajeet's ID changed, auto-update it
             await supabase.from('authorized_devices')
-              .update({ device_id: currentDeviceId, ip_address: ip })
+              .update({ device_id: currentDeviceId })
               .eq('user_phone', fullPhone);
             await addLog({
               action: 'ADMIN_REBIND',
-              details: `Vishwajeet automatically updated his hardware link (IP: ${ip})`,
+              details: `Vishwajeet automatically updated his hardware link (Device ID: ${currentDeviceId})`,
               userOverride: { phoneNumber: fullPhone, name: 'Vishwajeet Bhangare', loginTime: new Date().toISOString() }
             });
           } else {
@@ -557,7 +549,6 @@ const App: React.FC = () => {
           user_phone: fullPhone,
           user_name: derivedName,
           device_type: getDeviceType(),
-          ip_address: ip,
           device_id: currentDeviceId,
           login_time: new Date().toISOString()
         };
@@ -568,7 +559,7 @@ const App: React.FC = () => {
         const user: User = { phoneNumber: sessionObj.user_phone, name: derivedName, sessionId: data.id, loginTime: sessionObj.login_time };
         setCurrentUser(user);
         localStorage.setItem('thecage_session', JSON.stringify(user));
-        await addLog({ action: 'SECURE_LOGIN', details: `${user.name} logged in from authorized hardware (IP: ${ip})`, userOverride: user });
+        await addLog({ action: 'SECURE_LOGIN', details: `${user.name} logged in from authorized hardware (ID: ${currentDeviceId})`, userOverride: user });
       } catch (err: any) {
         setLoginError("Login failed: " + err.message);
       } finally {
@@ -1266,7 +1257,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                             <h4 className="text-[10px] font-black uppercase text-slate-800">{session.user_name}</h4>
                             {isCurrent && <span className="text-[7px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-tighter shadow-sm">Current Device</span>}
                           </div>
-                          <p className="text-[8px] font-bold text-slate-400 uppercase">{session.device_type} • {session.ip_address}</p>
+                          <p className="text-[8px] font-bold text-slate-400 uppercase">{session.device_type} • ID: {session.device_id}</p>
                         </div>
                       </div>
                       {isMasterAdmin && !isCurrent && (
@@ -1299,7 +1290,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                           <div>
                             <h4 className="text-[10px] font-black uppercase text-slate-800">{managerName}</h4>
                             <p className="text-[8px] font-bold text-slate-400 uppercase">{dev.user_phone}</p>
-                            <p className="text-[7px] text-slate-300 uppercase font-black tracking-tighter mt-1">IP: {dev.ip_address || 'N/A'}</p>
+                            <p className="text-[7px] text-slate-300 uppercase font-black tracking-tighter mt-1">DEVICE ID: {dev.device_id || 'N/A'}</p>
                           </div>
                         </div>
                         <button 
