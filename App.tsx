@@ -1,30 +1,33 @@
+// PART 1: IMPORTS AND CONSTANTS
+// Copy this section first
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Header from './components/Header.tsx';
 import BottomNav from './components/BottomNav.tsx';
 import FormSection from './components/FormSection.tsx';
 import { MembershipType, RegistrationData, NavTab, ServiceCategory, Member, MemberTab, User, LogEntry, Gender, ActiveSession } from './types.ts';
 import { PACKAGES } from './constants.ts';
-import { supabase, SUPABASE_ANON_KEY } from './lib/supabase.ts';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './lib/supabase.ts';
 import { 
   Search, Plus, X, ArrowRight, ShieldCheck, MessageCircle, BarChart3, Edit2, RefreshCw, Clock,
   User as UserIcon, Database, Calendar, CalendarDays,
   Bell, Send, Cake, Gift, Smartphone, Power, IndianRupee, Mail, CheckCircle2, Lock, Trash2,
-  Users
+  Users, AlertTriangle, Settings
 } from 'lucide-react';
 
 // @ts-ignore
-const FALLBACK_MASTER_KEY = import.meta.env?.VITE_MASTER_KEY || '';
+const MASTER_KEY = import.meta.env?.VITE_MASTER_KEY || '';
 // @ts-ignore
 const MASTER_ADMIN_PHONE = import.meta.env?.VITE_MASTER_ADMIN_PHONE || '';
 
-const MANAGER_MAP: Record<string, string> = {
-  '9130368298': 'Shrikant Sathe',
-  '9595107293': 'Vishwajeet Bhangare',
-  '9823733536': 'Radha Shetty'
-};
+// NEW: Only store manager names in code (safe to expose)
+const MANAGER_NAMES = [
+  'Shrikant Sathe',
+  'Vishwajeet Bhangare',
+  'Radha Shetty'
+];
 
-const ALLOWED_MANAGEMENT_PHONES = Object.keys(MANAGER_MAP);
-
+// Utility functions
 const getDeviceType = () => {
   const ua = navigator.userAgent;
   if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) return "Tablet";
@@ -40,8 +43,16 @@ const getDeviceId = () => {
   }
   return id;
 };
+// PART 2: COMPONENT STATE DECLARATION
+// Copy this section after Part 1
 
 const App: React.FC = () => {
+  // NEW: Manager data state (hybrid approach)
+  const [managersLoaded, setManagersLoaded] = useState(false);
+  const [managerMap, setManagerMap] = useState<Record<string, string>>({});
+  const [allowedPhones, setAllowedPhones] = useState<string[]>([]);
+
+  // Existing state
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('thecage_session');
@@ -91,6 +102,57 @@ const App: React.FC = () => {
 
   const isMasterAdmin = useMemo(() => currentUser?.phoneNumber === MASTER_ADMIN_PHONE, [currentUser]);
   const isConfigMissing = SUPABASE_ANON_KEY.includes('YOUR_ACTUAL_LONG');
+
+// PART 3: LOAD MANAGERS FUNCTION (NEW - Hybrid Approach)
+// Copy this section after Part 2
+
+  // NEW: Load managers from database on component mount
+  useEffect(() => {
+    async function loadManagers() {
+      if (isConfigMissing) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('managers')
+          .select('name, phone');
+
+        if (error) {
+          console.error('Error loading managers:', error);
+          return;
+        }
+
+        if (data && data.length > 0) {
+          // Build MANAGER_MAP (phone -> name)
+          const map = data.reduce((acc, manager) => {
+            acc[manager.phone] = manager.name;
+            return acc;
+          }, {} as Record<string, string>);
+
+          setManagerMap(map);
+          setAllowedPhones(Object.keys(map));
+          setManagersLoaded(true);
+
+          console.log('✅ Managers loaded:', Object.keys(map).length);
+        } else {
+          console.warn('No managers found in database');
+          setManagersLoaded(true);
+        }
+      } catch (err) {
+        console.error('Failed to load managers:', err);
+        setManagersLoaded(true);
+      }
+    }
+
+    loadManagers();
+  }, [isConfigMissing]);
+
+  // Helper function to get manager name by phone
+  const getManagerNameByPhone = useCallback((phone: string): string => {
+    return managerMap[phone] || 'Unknown Manager';
+  }, [managerMap]);
+
+// PART 4: HELPER FUNCTIONS AND HOOKS
+// Copy this section after Part 3
 
   const addLog = useCallback(async (params: {
     action: string;
@@ -185,6 +247,7 @@ const App: React.FC = () => {
         }
       } catch (err) {
         console.warn("master_key_storage fetch error, using fallback.", err);
+        const FALLBACK_MASTER_KEY = MASTER_KEY || '123456';
         setDbMasterKey(FALLBACK_MASTER_KEY);
         setLoginMasterKey(FALLBACK_MASTER_KEY);
       }
@@ -224,6 +287,9 @@ const App: React.FC = () => {
     if (!dateString) return 'Invalid Date';
     return new Date(dateString).toLocaleDateString('en-GB');
   };
+
+// PART 5: DATA PROCESSING AND MEMOIZED VALUES
+// Copy this section after Part 4
 
   const birthdayData = useMemo(() => {
     const today = new Date();
@@ -357,6 +423,9 @@ const App: React.FC = () => {
     };
   }, [logs]);
 
+// PART 6: FETCH DATA AND LOGIN HANDLER (MODIFIED)
+// Copy this section after Part 5
+
   const fetchData = useCallback(async () => {
     if (!currentUser || isConfigMissing) return;
     setIsSyncing(true);
@@ -424,7 +493,6 @@ const App: React.FC = () => {
         setSessions(sessionData as ActiveSession[]);
       }
 
-      // Load Authorized Device Bindings for Master Admin
       if (isMasterAdmin) {
         const { data: devData } = await supabase.from('authorized_devices').select('*');
         if (devData) setAuthorizedDevices(devData);
@@ -437,6 +505,89 @@ const App: React.FC = () => {
       setIsSyncing(false);
     }
   }, [currentUser, isConfigMissing, isMasterAdmin]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    
+    // Wait for managers to load
+    if (!managersLoaded) {
+      setLoginError('Loading manager data, please wait...');
+      return;
+    }
+
+    const phoneClean = loginPhone.replace(/\D/g, '');
+    const phone10 = phoneClean.slice(-10);
+    const fullPhone = `+91${phone10}`;
+    const activeMasterKey = dbMasterKey || MASTER_KEY || '123456';
+    const currentDeviceId = getDeviceId();
+    
+    // NEW: Check against dynamically loaded manager phones
+    if (loginMasterKey === activeMasterKey && allowedPhones.includes(fullPhone)) {
+      setIsSyncing(true);
+
+      try {
+        const { data: binding, error: bindErr } = await supabase
+          .from('authorized_devices')
+          .select('*')
+          .eq('user_phone', fullPhone)
+          .maybeSingle();
+        
+        if (bindErr) throw bindErr;
+
+        const isVishwajeet = fullPhone === MASTER_ADMIN_PHONE;
+
+        if (!binding) {
+          await supabase.from('authorized_devices').insert({
+            user_phone: fullPhone,
+            device_id: currentDeviceId
+          });
+        } else if (binding.device_id !== currentDeviceId) {
+          if (isVishwajeet) {
+            await supabase.from('authorized_devices')
+              .update({ device_id: currentDeviceId })
+              .eq('user_phone', fullPhone);
+            await addLog({
+              action: 'ADMIN_REBIND',
+              details: `Vishwajeet automatically updated his hardware link (Device ID: ${currentDeviceId})`,
+              userOverride: { phoneNumber: fullPhone, name: 'Vishwajeet Bhangare', loginTime: new Date().toISOString() }
+            });
+          } else {
+            setLoginError("SECURITY: This phone is not authorized for this account. Contact Vishwajeet for a reset.");
+            setIsSyncing(false);
+            return;
+          }
+        }
+
+        // NEW: Get manager name from loaded map
+        const derivedName = getManagerNameByPhone(fullPhone);
+        const sessionObj = {
+          user_phone: fullPhone,
+          user_name: derivedName,
+          device_type: getDeviceType(),
+          device_id: currentDeviceId,
+          login_time: new Date().toISOString()
+        };
+
+        const { data, error } = await supabase.from('sessions').insert(sessionObj).select().single();
+        if (error) throw error;
+        
+        const user: User = { phoneNumber: sessionObj.user_phone, name: derivedName, sessionId: data.id, loginTime: sessionObj.login_time };
+        setCurrentUser(user);
+        localStorage.setItem('thecage_session', JSON.stringify(user));
+        await addLog({ action: 'SECURE_LOGIN', details: `${user.name} logged in from authorized hardware (ID: ${currentDeviceId})`, userOverride: user });
+      } catch (err: any) {
+        setLoginError("Login failed: " + err.message);
+      } finally {
+        setIsSyncing(false);
+      }
+    } else {
+      setLoginError('INVALID CREDENTIALS OR PHONE');
+    }
+  };
+
+// PART 7: SESSION MANAGEMENT AND DEVICE FUNCTIONS
+// Copy this section after Part 6
 
   useEffect(() => {
     if (!currentUser?.sessionId || isConfigMissing) return;
@@ -496,81 +647,6 @@ const App: React.FC = () => {
     return () => { supabase.removeChannel(channel); };
   }, [currentUser, fetchData, isConfigMissing]);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-    const phoneClean = loginPhone.replace(/\D/g, '');
-    const phone10 = phoneClean.slice(-10);
-    const fullPhone = `+91${phone10}`;
-    const activeMasterKey = dbMasterKey || FALLBACK_MASTER_KEY;
-    const currentDeviceId = getDeviceId();
-    
-    if (loginMasterKey === activeMasterKey && ALLOWED_MANAGEMENT_PHONES.includes(phone10)) {
-      setIsSyncing(true);
-
-      try {
-        // --- HARDWARE DEVICE BINDING SECURITY (EXCLUSIVELY DEVICE ID) ---
-        const { data: binding, error: bindErr } = await supabase
-          .from('authorized_devices')
-          .select('*')
-          .eq('user_phone', fullPhone)
-          .maybeSingle();
-        
-        if (bindErr) throw bindErr;
-
-        const isVishwajeet = fullPhone === MASTER_ADMIN_PHONE;
-
-        if (!binding) {
-          // FIRST LOGIN: Bind this hardware permanently with Device ID
-          await supabase.from('authorized_devices').insert({
-            user_phone: fullPhone,
-            device_id: currentDeviceId
-          });
-        } else if (binding.device_id !== currentDeviceId) {
-          if (isVishwajeet) {
-            // MASTER ADMIN AUTO-REPAIR: If Vishwajeet's ID changed, auto-update it
-            await supabase.from('authorized_devices')
-              .update({ device_id: currentDeviceId })
-              .eq('user_phone', fullPhone);
-            await addLog({
-              action: 'ADMIN_REBIND',
-              details: `Vishwajeet automatically updated his hardware link (Device ID: ${currentDeviceId})`,
-              userOverride: { phoneNumber: fullPhone, name: 'Vishwajeet Bhangare', loginTime: new Date().toISOString() }
-            });
-          } else {
-            // WRONG DEVICE: Block login for others
-            setLoginError("SECURITY: This phone is not authorized for this account. Contact Vishwajeet for a reset.");
-            setIsSyncing(false);
-            return;
-          }
-        }
-
-        const derivedName = MANAGER_MAP[phone10];
-        const sessionObj = {
-          user_phone: fullPhone,
-          user_name: derivedName,
-          device_type: getDeviceType(),
-          device_id: currentDeviceId,
-          login_time: new Date().toISOString()
-        };
-
-        const { data, error } = await supabase.from('sessions').insert(sessionObj).select().single();
-        if (error) throw error;
-        
-        const user: User = { phoneNumber: sessionObj.user_phone, name: derivedName, sessionId: data.id, loginTime: sessionObj.login_time };
-        setCurrentUser(user);
-        localStorage.setItem('thecage_session', JSON.stringify(user));
-        await addLog({ action: 'SECURE_LOGIN', details: `${user.name} logged in from authorized hardware (ID: ${currentDeviceId})`, userOverride: user });
-      } catch (err: any) {
-        setLoginError("Login failed: " + err.message);
-      } finally {
-        setIsSyncing(false);
-      }
-    } else {
-      setLoginError('INVALID CREDENTIALS OR PHONE');
-    }
-  };
-
   const removeSession = async (sessionId: string, userName: string) => {
     if (!isMasterAdmin) return;
     if (!confirm(`Log out ${userName}'s device immediately?`)) return;
@@ -622,6 +698,9 @@ const App: React.FC = () => {
       setIsSyncing(false);
     }
   };
+
+// PART 8: ENROLLMENT AND MESSAGE FUNCTIONS
+// Copy this section after Part 7
 
   const handleEnrollment = async () => {
     setEnrollNameError('');
@@ -834,6 +913,9 @@ The Cage MMA Gym & RS Fitness Academy`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+// PART 9: LOGIN SCREEN UI (MODIFIED)
+// Copy this section after Part 8
+
   if (isConfigMissing) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
       <div className="max-w-md w-full bg-white p-10 rounded-[40px] shadow-2xl space-y-6">
@@ -855,24 +937,42 @@ The Cage MMA Gym & RS Fitness Academy`;
         <h2 className="text-2xl font-black mb-1 text-center uppercase tracking-tight text-slate-800">Sign In</h2>
         <p className="text-[10px] text-slate-400 font-bold text-center uppercase tracking-widest mb-8">Management Access Only</p>
         
+        {/* NEW: Display manager names from MANAGER_NAMES array (not phone numbers) */}
         <div className="mb-8">
            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4 text-center">Authorized Personnel (Tap to enter)</p>
-           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-              {Object.entries(MANAGER_MAP).map(([phone, name]) => (
-                <button 
-                  key={phone} 
-                  onClick={() => setLoginPhone(phone)}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-3xl border transition-all shrink-0 min-w-[110px] ${loginPhone === phone ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-slate-50 border-slate-100'}`}
-                >
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-colors ${loginPhone === phone ? 'bg-emerald-500 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>
-                    {loginPhone === phone ? <CheckCircle2 size={18} /> : name.charAt(0)}
-                  </div>
-                  <span className={`text-[8px] font-black uppercase tracking-tight text-center leading-tight ${loginPhone === phone ? 'text-white' : 'text-slate-600'}`}>
-                    {name.split(' ')[0]}<br/>{name.split(' ')[1]}
-                  </span>
-                </button>
-              ))}
-           </div>
+           {!managersLoaded ? (
+             <div className="text-center py-4">
+               <RefreshCw className="animate-spin mx-auto text-slate-400" size={20} />
+               <p className="text-[8px] text-slate-400 font-bold uppercase mt-2">Loading managers...</p>
+             </div>
+           ) : (
+             <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                {/* Display only names, fetch phones on login */}
+                {MANAGER_NAMES.map((name, index) => {
+                  const shortName = name.split(' ');
+                  return (
+                    <button 
+                      key={index} 
+                      onClick={() => {
+                        // Find the phone for this manager by matching name in managerMap
+                        const phone = Object.entries(managerMap).find(([p, n]) => n === name)?.[0];
+                        if (phone) {
+                          setLoginPhone(phone.replace('+91', ''));
+                        }
+                      }}
+                      className={`flex flex-col items-center gap-2 p-4 rounded-3xl border transition-all shrink-0 min-w-[110px] ${loginPhone && Object.entries(managerMap).find(([p, n]) => n === name)?.[0]?.includes(loginPhone) ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-slate-50 border-slate-100'}`}
+                    >
+                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-colors ${loginPhone && Object.entries(managerMap).find(([p, n]) => n === name)?.[0]?.includes(loginPhone) ? 'bg-emerald-500 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                        {loginPhone && Object.entries(managerMap).find(([p, n]) => n === name)?.[0]?.includes(loginPhone) ? <CheckCircle2 size={18} /> : name.charAt(0)}
+                      </div>
+                      <span className={`text-[8px] font-black uppercase tracking-tight text-center leading-tight ${loginPhone && Object.entries(managerMap).find(([p, n]) => n === name)?.[0]?.includes(loginPhone) ? 'text-white' : 'text-slate-600'}`}>
+                        {shortName[0]}<br/>{shortName[1]}
+                      </span>
+                    </button>
+                  );
+                })}
+             </div>
+           )}
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -884,9 +984,12 @@ The Cage MMA Gym & RS Fitness Academy`;
             <ShieldCheck size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input name="masterKey" type="password" required value={loginMasterKey} onChange={e => setLoginMasterKey(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-14 pr-5 py-4 font-black text-black focus:ring-2 focus:ring-emerald-500/50 outline-none" placeholder="Master Key" />
           </div>
-          <button disabled={isSyncing || !dbMasterKey} className="w-full bg-emerald-500 text-white py-5 rounded-3xl font-black active:scale-[0.98] transition-all shadow-lg shadow-emerald-500/20 mt-4 flex items-center justify-center gap-2 disabled:opacity-50">
+          <button disabled={isSyncing || !dbMasterKey || !managersLoaded} className="w-full bg-emerald-500 text-white py-5 rounded-3xl font-black active:scale-[0.98] transition-all shadow-lg shadow-emerald-500/20 mt-4 flex items-center justify-center gap-2 disabled:opacity-50">
             {isSyncing ? <RefreshCw className="animate-spin" size={20} /> : 'AUTHENTICATE'}
           </button>
+          {!managersLoaded && !isSyncing && (
+            <p className="text-amber-500 text-[10px] font-bold text-center uppercase tracking-widest mt-2 text-center w-full">Loading manager data...</p>
+          )}
           {!dbMasterKey && !isSyncing && (
             <p className="text-amber-500 text-[10px] font-bold text-center uppercase tracking-widest mt-2 text-center w-full">Connecting to server...</p>
           )}
@@ -895,6 +998,10 @@ The Cage MMA Gym & RS Fitness Academy`;
       </div>
     </div>
   );
+
+  // PART 10: MAIN RETURN STATEMENT - FULL UI
+// Copy this section after Part 9
+// This is the complete JSX return - no changes needed, just paste after Part 9
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28 text-black">
@@ -1093,7 +1200,7 @@ The Cage MMA Gym & RS Fitness Academy`;
           </div>
         )}
 
-        {activeTab === 'MEMBERS' && (
+{activeTab === 'MEMBERS' && (
           <div className="space-y-6">
             <div className="bg-indigo-600 rounded-[2.5rem] p-8 text-white flex justify-between items-center shadow-2xl relative overflow-hidden">
                <div className="z-10">
@@ -1281,7 +1388,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                 </div>
                 <div className="space-y-3">
                   {authorizedDevices.map((dev) => {
-                    const managerName = MANAGER_MAP[dev.user_phone.slice(-10)] || 'Unknown';
+                    const managerName =getManagerNameByPhone(dev.user_phone);
                     return (
                       <div key={dev.id} className="p-4 rounded-2xl border border-slate-100 bg-slate-50/30 flex items-center justify-between group">
                         <div className="flex items-center gap-3">
