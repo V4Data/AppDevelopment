@@ -13,9 +13,9 @@ import {
 } from 'lucide-react';
 
 // @ts-ignore
-const FALLBACK_MASTER_KEY = import.meta.env?.VITE_MASTER_KEY || '959510';
+const FALLBACK_MASTER_KEY = import.meta.env?.VITE_MASTER_KEY || '';
 // @ts-ignore
-const MASTER_ADMIN_PHONE = import.meta.env?.VITE_MASTER_ADMIN_PHONE || '+919595107293';
+const MASTER_ADMIN_PHONE = import.meta.env?.VITE_MASTER_ADMIN_PHONE || '';
 
 const MANAGER_MAP: Record<string, string> = {
   '9130368298': 'Shrikant Sathe',
@@ -650,7 +650,7 @@ const App: React.FC = () => {
     }
   };
 
-  const resetHardwareBinding = async (userPhone: string, userName: string, bindingId: string, deviceId: string) => {
+  const resetHardwareBinding = async (_userPhone: string, userName: string, bindingId: string, deviceId: string) => {
     if (!isMasterAdmin) return;
     if (!confirm(`Unbind ${userName}'s device (${deviceId})? This will end the current device binding and allow them to register a new device on their next login.`)) return;
     
