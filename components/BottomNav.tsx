@@ -10,7 +10,7 @@ interface BottomNavProps {
 
 const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) => {
   const getTabStyles = (tab: NavTab) => {
-    if (activeTab !== tab) return 'text-slate-300 hover:text-slate-400';
+    if (activeTab !== tab) return 'text-slate-400 hover:text-slate-500';
     
     switch (tab) {
       case 'HOME': return 'text-emerald-500 scale-110';
@@ -34,7 +34,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange }) => {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-slate-100 px-6 py-4 flex justify-between items-center z-50 safe-area-bottom shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.05)]">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 px-6 py-4 flex justify-between items-center z-50 safe-area-bottom shadow-[0_-8px_30px_rgb(0,0,0,0.04)]">
       <button 
         onClick={() => onTabChange('HOME')}
         className={`relative flex flex-col items-center gap-1 transition-all p-2 rounded-2xl ${getTabStyles('HOME')}`}

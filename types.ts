@@ -1,4 +1,3 @@
-
 export enum MembershipType {
   SINGLE = 'SINGLE',
   COUPLE = 'COUPLE'
@@ -40,6 +39,8 @@ export interface Member {
   totalFee: number;
   welcomeSent: boolean;
   reminderCount: number;
+  enrolledBy?: string;
+  enrolledByPhone?: string;
 }
 
 export interface User {
@@ -57,6 +58,7 @@ export interface ActiveSession {
   device_id: string;
   login_time: string;
   last_active: string;
+  ip_address?: string;
 }
 
 export interface LogEntry {
