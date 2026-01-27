@@ -9,21 +9,21 @@ import {
   Search, Plus, X, ArrowRight, ShieldCheck, MessageCircle, BarChart3, Edit2, RefreshCw, Clock,
   User as UserIcon, Database, Calendar, CalendarDays,
   Bell, Send, Cake, Gift, Smartphone, Power, IndianRupee, Mail, CheckCircle2, Lock, Trash2,
-  Users
+  Users, BadgePercent, CircleSlash
 } from 'lucide-react';
 
 // @ts-ignore
-const FALLBACK_MASTER_KEY = import.meta.env?.VITE_MASTER_KEY || '';
-// @ts-ignore
-const MASTER_ADMIN_PHONE = import.meta.env?.VITE_MASTER_ADMIN_PHONE || '';
+const SUPABASE_FUNCTION_URL = import.meta.env?.VITE_SUPABASE_FUNCTION_URL || '';
 
-const MANAGER_MAP: Record<string, string> = {
-  '9130368298': 'Shrikant Sathe',
-  '9595107293': 'Vishwajeet Bhangare',
-  '9823733536': 'Radha Shetty'
-};
+// Manager data will be loaded from database - no hardcoded contacts
+interface ManagerInfo {
+  phone_number: string;
+  name: string;
+  is_master_admin: boolean;
+}
 
-const ALLOWED_MANAGEMENT_PHONES = Object.keys(MANAGER_MAP);
+// Cache for managers loaded from database
+let managersCache: ManagerInfo[] = [];
 
 const getDeviceType = () => {
   const ua = navigator.userAgent;
@@ -85,6 +85,7 @@ const App: React.FC = () => {
   const [enrollPhoneError, setEnrollPhoneError] = useState('');
   const [enrollNameError, setEnrollNameError] = useState('');
   const [usedFallbackKey, setUsedFallbackKey] = useState(false);
+  const [managers, setManagers] = useState<ManagerInfo[]>([]);
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -101,7 +102,11 @@ const App: React.FC = () => {
     paymentReceived: 0,
   });
 
-  const isMasterAdmin = useMemo(() => currentUser?.phoneNumber === '+919595107293', [currentUser]);
+  const isMasterAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    const manager = managers.find(m => m.phone_number === currentUser.phoneNumber);
+    return manager?.is_master_admin || currentUser.phoneNumber === '+919595107293';
+  }, [currentUser, managers]);
   const isConfigMissing = SUPABASE_ANON_KEY.includes('YOUR_ACTUAL_LONG');
 
   const addLog = useCallback(async (params: {
@@ -154,54 +159,37 @@ const App: React.FC = () => {
   }, [currentUser, addLog]);
 
   useEffect(() => {
-    const fetchAndRotateConfig = async () => {
+    const fetchConfig = async () => {
       if (isConfigMissing) return;
       try {
+        // Fetch managers from database
+        const { data: managersData, error: managersError } = await supabase
+          .from('managers')
+          .select('phone_number, name, is_master_admin');
+        
+        if (!managersError && managersData) {
+          setManagers(managersData);
+          managersCache = managersData;
+        }
+
+        // Just fetch master key (rotation handled server-side)
         const { data, error } = await supabase
           .from('master_key_storage')
-          .select('value, updated_at')
+          .select('value')
           .eq('key', 'master_key')
           .maybeSingle();
         
         if (error) throw error;
 
         if (data) {
-          const now = new Date();
-          const istNow = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
-          
-          const recentSunday = new Date(istNow);
-          recentSunday.setDate(istNow.getDate() - istNow.getDay());
-          recentSunday.setHours(5, 5, 0, 0);
-
-          if (istNow < recentSunday) {
-            recentSunday.setDate(recentSunday.getDate() - 7);
-          }
-
-          const lastRotatedIST = new Date(new Date(data.updated_at).toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
-
-          if (lastRotatedIST < recentSunday) {
-            const newKey = Math.floor(100000 + Math.random() * 900000).toString();
-            const { error: updateError } = await supabase
-              .from('master_key_storage')
-              .update({ value: newKey, updated_at: now.toISOString() })
-              .eq('key', 'master_key');
-            
-            if (!updateError) {
-              setDbMasterKey(newKey);
-              setLoginMasterKey(newKey);
-            }
-          } else {
-            setDbMasterKey(data.value);
-            setLoginMasterKey(data.value);
-          }
+          setDbMasterKey(data.value);
+          setLoginMasterKey(data.value);
         }
       } catch (err) {
-        console.warn("master_key_storage fetch error, using fallback.", err);
-        setDbMasterKey(FALLBACK_MASTER_KEY);
-        setLoginMasterKey(FALLBACK_MASTER_KEY);
+        console.warn("Config fetch error.", err);
       }
     };
-    fetchAndRotateConfig();
+    fetchConfig();
   }, [isConfigMissing]);
 
   const getRemainingDays = (expiryDate: string) => {
@@ -361,11 +349,18 @@ const App: React.FC = () => {
   }, [members]);
 
   const logsByDay = useMemo(() => {
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
+    // Filter logs to only include last 24 hours
+    const recentLogs = logs.filter(l => new Date(l.timestamp) >= twentyFourHoursAgo);
+    
     const today = new Date();
     today.setHours(0,0,0,0);
+    
     return {
-      today: logs.filter(l => new Date(l.timestamp) >= today),
-      earlier: logs.filter(l => new Date(l.timestamp) < today)
+      today: recentLogs.filter(l => new Date(l.timestamp) >= today),
+      earlier: recentLogs.filter(l => new Date(l.timestamp) < today)
     };
   }, [logs]);
 
@@ -401,10 +396,14 @@ const App: React.FC = () => {
           gender: (m.gender as Gender) || Gender.MALE,
           totalPaid: Number(m.total_paid || 0),
           totalFee: Number(m.total_fee || 0),
+          pendingFee: Number(m.pending_fee || 0),
           welcomeSent: !!m.welcome_sent,
           reminderCount: Number(m.reminder_count || 0),
           enrolledBy: m.enrolled_by || '',
-          enrolledByPhone: m.enrolled_by_phone || ''
+          enrolledByPhone: m.enrolled_by_phone || '',
+          isPendingFeeWaivedOff: !!m.is_pending_fee_waived_off,
+          waivedOffAt: m.waived_off_at || null,
+          waivedOffBy: m.waived_off_by || null
         })));
       }
 
@@ -469,34 +468,40 @@ const App: React.FC = () => {
         filter: `id=eq.${currentUser.sessionId}` 
       }, () => {
         handleLogout();
-        alert("SECURITY: Your session was disconnected (Scheduled 12:00 PM IST logout or Admin action).");
+        alert("SECURITY: Your session was disconnected.");
       })
       .subscribe();
 
     const heartbeat = setInterval(async () => {
-      const istNow = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
+      // Check if session still exists (server handles auto-logout)
+      const { data: sessionExists } = await supabase
+        .from('sessions')
+        .select('id')
+        .eq('id', currentUser.sessionId)
+        .maybeSingle();
       
-      // Refresh logs at 12:00 AM IST daily (remove old logs from UI, keep in database)
-      if (istNow.getHours() === 0 && istNow.getMinutes() === 0) {
-        fetchData(); // Re-fetch only last 24 hours of logs
-      }
-      
-      // Logout all managers at 12:00 PM IST daily
-      if (istNow.getHours() === 12 && istNow.getMinutes() === 0) {
-        await supabase.from('sessions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (!sessionExists) {
         handleLogout();
         return;
       }
+      
+      // Update last active
       await supabase.from('sessions')
         .update({ last_active: new Date().toISOString() })
         .eq('id', currentUser.sessionId);
+      
+      // Refresh logs periodically (every 5 minutes)
+      const now = new Date();
+      if (now.getMinutes() % 5 === 0 && now.getSeconds() < 30) {
+        fetchData();
+      }
     }, 30000);
 
     return () => { 
       supabase.removeChannel(sessionChannel);
       clearInterval(heartbeat);
     };
-  }, [currentUser?.sessionId, isConfigMissing, handleLogout]);
+  }, [currentUser?.sessionId, isConfigMissing, handleLogout, fetchData]);
 
   useEffect(() => {
     if (!currentUser || isConfigMissing) return;
@@ -529,89 +534,113 @@ const App: React.FC = () => {
     const phoneClean = loginPhone.replace(/\D/g, '');
     const phone10 = phoneClean.slice(-10);
     const fullPhone = `+91${phone10}`;
-    const activeMasterKey = dbMasterKey || FALLBACK_MASTER_KEY;
     const currentDeviceId = getDeviceId();
+    const ipAddress = await getIPAddress();
     
-    // Check if this is Vishwajeet (Master Admin) using fallback key
-    const isVishwajeet = phone10 === '9595107293';
-    const usingFallbackKey = loginMasterKey === FALLBACK_MASTER_KEY && FALLBACK_MASTER_KEY !== '';
-    const canBypassDeviceCheck = isVishwajeet && usingFallbackKey;
-    const validMasterKey = loginMasterKey === activeMasterKey || canBypassDeviceCheck;
+    // Find manager from database
+    const manager = managers.find(m => m.phone_number === fullPhone);
     
-    if (validMasterKey && ALLOWED_MANAGEMENT_PHONES.includes(phone10)) {
-      setIsSyncing(true);
+    if (!manager) {
+      setLoginError('UNAUTHORIZED: Not a registered manager');
+      return;
+    }
+    
+    setIsSyncing(true);
 
-      try {
-        // --- STRICT HARDWARE DEVICE BINDING SECURITY ---
-        // Vishwajeet with fallback key can bypass device check entirely
-        if (canBypassDeviceCheck) {
-          // Vishwajeet using fallback key - skip device binding check, allow login
-          // He can then reset his own binding from the Devices tab
-          await addLog({
-            action: 'FALLBACK_LOGIN',
-            details: `Vishwajeet Bhangare logged in using Fallback Master Key (bypassed device check)`,
-            userOverride: { phoneNumber: fullPhone, name: MANAGER_MAP[phone10], loginTime: new Date().toISOString() }
-          });
-        } else {
-          // Normal device binding check for all managers (including Vishwajeet with regular key)
-          const { data: binding, error: bindErr } = await supabase
-            .from('authorized_devices')
-            .select('*')
-            .eq('user_phone', fullPhone)
-            .is('end_date', null)
-            .maybeSingle();
-          
-          if (bindErr) throw bindErr;
-
-          if (!binding) {
-            // FIRST LOGIN or after reset: Create new binding with start_date
-            await supabase.from('authorized_devices').insert({
-              user_phone: fullPhone,
-              user_name: MANAGER_MAP[phone10],
-              device_id: currentDeviceId,
-              start_date: new Date().toISOString(),
-              end_date: null
-            });
-            await addLog({
-              action: 'DEVICE_BIND',
-              details: `${MANAGER_MAP[phone10]} registered new device (ID: ${currentDeviceId})`,
-              userOverride: { phoneNumber: fullPhone, name: MANAGER_MAP[phone10], loginTime: new Date().toISOString() }
-            });
-          } else if (binding.device_id !== currentDeviceId) {
-            // Device mismatch - BLOCK login
-            setLoginError(`SECURITY BLOCK: Your account is bound to a different device.${isVishwajeet ? ' Use the Fallback Master Key to login and reset your device binding.' : ' Contact Vishwajeet to reset your device binding.'}`);
-            setIsSyncing(false);
-            return;
+    try {
+      // Try Edge Function first (all logic server-side)
+      if (SUPABASE_FUNCTION_URL) {
+        const response = await fetch(`${SUPABASE_FUNCTION_URL}/secure-login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: phone10,
+            masterKey: loginMasterKey,
+            deviceId: currentDeviceId,
+            deviceType: getDeviceType(),
+            ipAddress: ipAddress
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          if (result.error === 'DEVICE_MISMATCH') {
+            setLoginError(`SECURITY BLOCK: ${result.message || 'Device not authorized'}`);
+          } else {
+            setLoginError(result.error || 'Login failed');
           }
-          // If binding exists and device matches - allow login (no action needed)
+          setIsSyncing(false);
+          return;
+        }
+        
+        const user: User = { 
+          phoneNumber: result.user.phoneNumber, 
+          name: result.user.name, 
+          sessionId: result.session.id, 
+          loginTime: result.session.loginTime 
+        };
+        setCurrentUser(user);
+        setUsedFallbackKey(result.usedFallbackKey || false);
+        localStorage.setItem('thecage_session', JSON.stringify(user));
+        
+      } else {
+        // Fallback: Simple validation (no sensitive logic exposed)
+        if (loginMasterKey !== dbMasterKey) {
+          setLoginError('INVALID CREDENTIALS');
+          setIsSyncing(false);
+          return;
+        }
+        
+        // Check device binding
+        const { data: binding } = await supabase
+          .from('authorized_devices')
+          .select('*')
+          .eq('user_phone', fullPhone)
+          .is('end_date', null)
+          .maybeSingle();
+
+        if (!binding) {
+          // First login - create binding
+          await supabase.from('authorized_devices').insert({
+            user_phone: fullPhone,
+            user_name: manager.name,
+            device_id: currentDeviceId,
+            start_date: new Date().toISOString()
+          });
+        } else if (binding.device_id !== currentDeviceId) {
+          setLoginError('SECURITY BLOCK: Device not authorized. Contact admin.');
+          setIsSyncing(false);
+          return;
         }
 
-        const derivedName = MANAGER_MAP[phone10];
-        const ipAddress = await getIPAddress();
-        const sessionObj = {
+        // Create session
+        const { data, error } = await supabase.from('sessions').insert({
           user_phone: fullPhone,
-          user_name: derivedName,
+          user_name: manager.name,
           device_type: getDeviceType(),
           device_id: currentDeviceId,
           ip_address: ipAddress,
           login_time: new Date().toISOString()
-        };
-
-        const { data, error } = await supabase.from('sessions').insert(sessionObj).select().single();
+        }).select().single();
+        
         if (error) throw error;
         
-        const user: User = { phoneNumber: sessionObj.user_phone, name: derivedName, sessionId: data.id, loginTime: sessionObj.login_time };
+        const user: User = { phoneNumber: fullPhone, name: manager.name, sessionId: data.id, loginTime: data.login_time };
         setCurrentUser(user);
-        setUsedFallbackKey(canBypassDeviceCheck);
+        setUsedFallbackKey(false);
         localStorage.setItem('thecage_session', JSON.stringify(user));
-        await addLog({ action: 'SECURE_LOGIN', details: `${user.name} logged in from ${canBypassDeviceCheck ? 'fallback key (device check bypassed)' : 'authorized device (ID: ' + currentDeviceId + ')'}`, userOverride: user });
-      } catch (err: any) {
-        setLoginError("Login failed: " + err.message);
-      } finally {
-        setIsSyncing(false);
+        
+        await addLog({ 
+          action: 'SECURE_LOGIN', 
+          details: `${user.name} logged in`, 
+          userOverride: user 
+        });
       }
-    } else {
-      setLoginError('INVALID CREDENTIALS OR PHONE NUMBER');
+    } catch (err: any) {
+      setLoginError("Login failed: " + err.message);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -650,28 +679,44 @@ const App: React.FC = () => {
     }
   };
 
-  const resetHardwareBinding = async (_userPhone: string, userName: string, bindingId: string, deviceId: string) => {
+  const resetHardwareBinding = async (userPhone: string, userName: string, bindingId: string, deviceId: string) => {
     if (!isMasterAdmin) return;
     if (!confirm(`Unbind ${userName}'s device (${deviceId})? This will end the current device binding and allow them to register a new device on their next login.`)) return;
     
     setIsSyncing(true);
     try {
-      // Soft delete: Set end_date on the current binding instead of deleting
-      await supabase.from('authorized_devices')
-        .update({ end_date: new Date().toISOString() })
-        .eq('id', bindingId);
-      
-      await addLog({ 
-        action: 'DEVICE_UNBIND', 
-        details: `Master Admin ended device binding for ${userName} (Device: ${deviceId})`,
-        oldValue: `Device ID: ${deviceId}`,
-        newValue: 'Awaiting new device registration'
-      });
+      // Try Edge Function first
+      if (SUPABASE_FUNCTION_URL && currentUser?.sessionId) {
+        const response = await fetch(`${SUPABASE_FUNCTION_URL}/reset-device`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: currentUser.sessionId,
+            targetPhone: userPhone,
+            bindingId: bindingId
+          })
+        });
+        
+        if (!response.ok) {
+          const result = await response.json();
+          throw new Error(result.error || 'Reset failed');
+        }
+      } else {
+        // Fallback: Direct database update
+        await supabase.from('authorized_devices')
+          .update({ end_date: new Date().toISOString() })
+          .eq('id', bindingId);
+        
+        await addLog({ 
+          action: 'DEVICE_UNBIND', 
+          details: `Admin ended device binding for ${userName} (Device: ${deviceId})`
+        });
+      }
       
       fetchData();
-      alert(`Success: ${userName}'s device binding has been ended. They can register a new device on their next login.`);
-    } catch (err) {
-      alert("Reset failed. Check connection.");
+      alert(`Success: ${userName}'s device binding has been ended.`);
+    } catch (err: any) {
+      alert("Reset failed: " + err.message);
     } finally {
       setIsSyncing(false);
     }
@@ -704,6 +749,8 @@ const App: React.FC = () => {
     const expiry = new Date(joining);
     expiry.setDate(expiry.getDate() + pkg.durationDays);
 
+    const pendingFeeAmount = pkg.price - paidVal;
+    
     const memberData: any = {
       id: editingMember?.id || Date.now().toString(),
       full_name: formData.fullName,
@@ -718,10 +765,15 @@ const App: React.FC = () => {
       gender: formData.gender,
       total_paid: paidVal,
       total_fee: pkg.price,
+      pending_fee: pendingFeeAmount,
       updated_at: new Date().toISOString(),
       // Store enrolling manager info only for new enrollments
       enrolled_by: editingMember?.enrolledBy || currentUser?.name || '',
-      enrolled_by_phone: editingMember?.enrolledByPhone || currentUser?.phoneNumber || ''
+      enrolled_by_phone: editingMember?.enrolledByPhone || currentUser?.phoneNumber || '',
+      // Reset waiver if payment changes and there's still pending fee
+      is_pending_fee_waived_off: pendingFeeAmount > 0 ? false : (editingMember?.isPendingFeeWaivedOff || false),
+      waived_off_at: pendingFeeAmount > 0 ? null : (editingMember?.waivedOffAt || null),
+      waived_off_by: pendingFeeAmount > 0 ? null : (editingMember?.waivedOffBy || null)
     };
 
     if (!schemaError && editingMember) {
@@ -780,10 +832,14 @@ const App: React.FC = () => {
           gender: memberData.gender as Gender, 
           totalPaid: memberData.total_paid, 
           totalFee: memberData.total_fee, 
+          pendingFee: memberData.pending_fee,
           welcomeSent: false, 
           reminderCount: 0,
           enrolledBy: memberData.enrolled_by,
-          enrolledByPhone: memberData.enrolled_by_phone
+          enrolledByPhone: memberData.enrolled_by_phone,
+          isPendingFeeWaivedOff: false,
+          waivedOffAt: null,
+          waivedOffBy: null
         });
       } else { closeEnrollmentFlow(); }
     } catch (err: any) {
@@ -803,6 +859,130 @@ const App: React.FC = () => {
       if (error) throw error;
       setMembers(prev => prev.map(m => m.id === memberId ? { ...m, welcomeSent: updates.welcome_sent !== undefined ? updates.welcome_sent : m.welcomeSent, reminderCount: updates.reminder_count !== undefined ? updates.reminder_count : m.reminderCount } : m));
     } catch (err: any) { console.error("Update failed:", err); }
+  };
+
+  const waivePendingFee = async (member: Member) => {
+    const pendingAmount = member.totalFee - member.totalPaid;
+    if (pendingAmount <= 0) {
+      alert("No pending fee to waive.");
+      return;
+    }
+
+    if (member.isPendingFeeWaivedOff) {
+      alert("Fee already waived off for this member.");
+      return;
+    }
+
+    if (!confirm(`Waive off ₹${pendingAmount} pending fee for ${member.fullName}?\n\nThis action will be logged.`)) {
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const waiverData = {
+        is_pending_fee_waived_off: true,
+        waived_off_at: new Date().toISOString(),
+        waived_off_by: currentUser?.name || 'Master Admin',
+        pending_fee: 0,  // Set pending to 0 after waiver
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('members')
+        .update(waiverData)
+        .eq('id', member.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setMembers(prev => prev.map(m => 
+        m.id === member.id 
+          ? { 
+              ...m, 
+              isPendingFeeWaivedOff: true, 
+              waivedOffAt: waiverData.waived_off_at,
+              waivedOffBy: waiverData.waived_off_by,
+              pendingFee: 0
+            } 
+          : m
+      ));
+
+      // Log the waiver
+      await addLog({
+        action: 'FEE_WAIVER',
+        details: `${currentUser?.name} waived off ₹${pendingAmount} pending fee for ${member.fullName}`,
+        memberId: member.id,
+        memberName: member.fullName,
+        oldValue: `Pending: ₹${pendingAmount}`,
+        newValue: `Pending: ₹0 (Waived Off)`
+      });
+
+      alert(`Success! ₹${pendingAmount} pending fee has been waived off for ${member.fullName}.`);
+    } catch (err: any) {
+      alert("Failed to waive fee: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const undoFeeWaiver = async (member: Member) => {
+    if (!member.isPendingFeeWaivedOff) {
+      alert("No waiver to undo for this member.");
+      return;
+    }
+
+    const actualPending = member.totalFee - member.totalPaid;
+    
+    if (!confirm(`Undo fee waiver for ${member.fullName}?\n\nPending fee will be restored to ₹${actualPending}.`)) {
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const undoData = {
+        is_pending_fee_waived_off: false,
+        waived_off_at: null,
+        waived_off_by: null,
+        pending_fee: actualPending,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('members')
+        .update(undoData)
+        .eq('id', member.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setMembers(prev => prev.map(m => 
+        m.id === member.id 
+          ? { 
+              ...m, 
+              isPendingFeeWaivedOff: false, 
+              waivedOffAt: null,
+              waivedOffBy: null,
+              pendingFee: actualPending
+            } 
+          : m
+      ));
+
+      // Log the undo
+      await addLog({
+        action: 'FEE_WAIVER_UNDO',
+        details: `${currentUser?.name} restored pending fee for ${member.fullName}`,
+        memberId: member.id,
+        memberName: member.fullName,
+        oldValue: `Pending: ₹0 (Was Waived)`,
+        newValue: `Pending: ₹${actualPending} (Restored)`
+      });
+
+      alert(`Waiver undone. Pending fee of ₹${actualPending} has been restored for ${member.fullName}.`);
+    } catch (err: any) {
+      alert("Failed to undo waiver: " + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const sendBirthdayWish = (member: Member) => {
@@ -919,20 +1099,28 @@ The Cage MMA Gym & RS Fitness Academy`;
         <div className="mb-8">
            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4 text-center">Authorized Personnel (Tap to enter)</p>
            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-              {Object.entries(MANAGER_MAP).map(([phone, name]) => (
-                <button 
-                  key={phone} 
-                  onClick={() => setLoginPhone(phone)}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-3xl border transition-all shrink-0 min-w-[110px] ${loginPhone === phone ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-slate-50 border-slate-100'}`}
-                >
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-colors ${loginPhone === phone ? 'bg-emerald-500 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>
-                    {loginPhone === phone ? <CheckCircle2 size={18} /> : name.charAt(0)}
-                  </div>
-                  <span className={`text-[8px] font-black uppercase tracking-tight text-center leading-tight ${loginPhone === phone ? 'text-white' : 'text-slate-600'}`}>
-                    {name.split(' ')[0]}<br/>{name.split(' ')[1]}
-                  </span>
-                </button>
-              ))}
+              {managers.length > 0 ? managers.map((manager) => {
+                const phone10 = manager.phone_number.replace('+91', '');
+                const nameParts = manager.name.split(' ');
+                return (
+                  <button 
+                    key={manager.phone_number} 
+                    onClick={() => setLoginPhone(phone10)}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-3xl border transition-all shrink-0 min-w-[110px] ${loginPhone === phone10 ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-slate-50 border-slate-100'}`}
+                  >
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-colors ${loginPhone === phone10 ? 'bg-emerald-500 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                      {loginPhone === phone10 ? <CheckCircle2 size={18} /> : manager.name.charAt(0)}
+                    </div>
+                    <span className={`text-[8px] font-black uppercase tracking-tight text-center leading-tight ${loginPhone === phone10 ? 'text-white' : 'text-slate-600'}`}>
+                      {nameParts[0]}<br/>{nameParts[1] || ''}
+                    </span>
+                  </button>
+                );
+              }) : (
+                <div className="w-full text-center py-4 text-slate-400 text-[10px] font-bold uppercase">
+                  Loading managers...
+                </div>
+              )}
            </div>
         </div>
 
@@ -959,7 +1147,7 @@ The Cage MMA Gym & RS Fitness Academy`;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28 text-black">
-      <Header user={currentUser} onLogout={handleLogout} />
+      <Header user={currentUser} onLogout={handleLogout} isConnected={!connectionError && !isConfigMissing} />
       <main className="max-w-2xl mx-auto px-4 pt-8">
         {activeTab === 'HOME' && (
           <div className="space-y-6">
@@ -1185,6 +1373,7 @@ The Cage MMA Gym & RS Fitness Academy`;
               {filteredMembers.map(member => {
                 const daysLeft = getRemainingDays(member.expiryDate);
                 const pending = member.totalFee - member.totalPaid;
+                const isWaived = member.isPendingFeeWaivedOff;
                 
                 let statusColor = 'bg-emerald-50 border-emerald-100 text-emerald-600';
                 let iconColor = 'bg-emerald-500 text-white';
@@ -1210,11 +1399,41 @@ The Cage MMA Gym & RS Fitness Academy`;
                       <p className="text-[10px] font-bold uppercase opacity-60 mt-0.5">
                         {member.phoneNumber} • {daysLeft < 0 ? 'EXPIRED' : `${daysLeft} days left`}
                       </p>
-                      {pending > 0 && (
+                      {pending > 0 && !isWaived && (
                         <p className="text-[9px] font-black mt-1 bg-white/50 px-2 py-0.5 rounded-full inline-block border border-red-200 text-red-600">PENDING: ₹{pending}</p>
+                      )}
+                      {pending > 0 && isWaived && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[9px] font-black bg-purple-100 px-2 py-0.5 rounded-full inline-block border border-purple-200 text-purple-600 flex items-center gap-1">
+                            <BadgePercent size={10} /> WAIVED: ₹{pending}
+                          </span>
+                          {member.waivedOffBy && (
+                            <span className="text-[7px] font-bold text-slate-400 uppercase">by {member.waivedOffBy}</span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* Fee Waiver Button - All Managers */}
+                      {pending > 0 && !isWaived && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); waivePendingFee(member); }} 
+                          className="p-3 bg-purple-500 text-white rounded-2xl shadow-sm hover:scale-110 transition-transform"
+                          title="Waive Pending Fee"
+                        >
+                          <BadgePercent size={16} />
+                        </button>
+                      )}
+                      {/* Undo Waiver Button - All Managers */}
+                      {isWaived && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); undoFeeWaiver(member); }} 
+                          className="p-3 bg-orange-500 text-white rounded-2xl shadow-sm hover:scale-110 transition-transform"
+                          title="Undo Fee Waiver"
+                        >
+                          <CircleSlash size={16} />
+                        </button>
+                      )}
                       <button onClick={(e) => { e.stopPropagation(); setEditingMember(member); setFormData({ ...member, phoneNumber: member.phoneNumber.replace('+91',''), paymentReceived: member.totalPaid }); setShowEnrollModal(true); }} className="p-3 bg-white text-slate-600 rounded-2xl shadow-sm hover:scale-110 transition-transform"><Edit2 size={16} /></button>
                       {!member.welcomeSent && isMasterAdmin && (
                         <button onClick={() => sendWhatsAppReminder(member, 'welcome')} className="p-3 bg-indigo-500 text-white rounded-2xl shadow-sm hover:scale-110 transition-transform"><Send size={16} /></button>
@@ -1382,7 +1601,8 @@ The Cage MMA Gym & RS Fitness Academy`;
               </div>
               <div className="space-y-3">
                 {authorizedDevices.map((dev) => {
-                  const managerName = dev.user_name || MANAGER_MAP[dev.user_phone?.slice(-10)] || 'Unknown';
+                  const manager = managers.find(m => m.phone_number === dev.user_phone);
+                  const managerName = dev.user_name || manager?.name || 'Unknown';
                   const isBound = !!dev.device_id;
                   const startDate = dev.start_date ? new Date(dev.start_date).toLocaleDateString('en-GB') : 'N/A';
                   return (
@@ -1413,7 +1633,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                   );
                 })}
                 {authorizedDevices.length === 0 && (
-                  <div className="text-center py-6 text-[9px] font-black text-slate-300 uppercase tracking-widest">No managers found in database</div>
+                  <div className="text-center py-6 text-[9px] font-black text-slate-300 uppercase tracking-widest">No device bindings found</div>
                 )}
               </div>
             </div>

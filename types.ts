@@ -10,17 +10,18 @@ export enum ServiceCategory {
 
 export enum Gender {
   MALE = 'MALE',
-  FEMALE = 'FEMALE',
-  OTHER = 'OTHER'
+  FEMALE = 'FEMALE'
 }
 
-export interface Package {
-  id: string;
+export type NavTab = 'HOME' | 'MEMBERS' | 'LOGS' | 'DEVICES';
+
+export type MemberTab = 'ALL' | 'ACTIVE' | 'INACTIVE' | '7DAYS' | '15DAYS';
+
+export interface User {
+  phoneNumber: string;
   name: string;
-  price: number;
-  category: ServiceCategory;
-  isCoupleOnly: boolean;
-  durationDays: number;
+  sessionId?: string;
+  loginTime?: string;
 }
 
 export interface Member {
@@ -37,41 +38,15 @@ export interface Member {
   gender: Gender;
   totalPaid: number;
   totalFee: number;
+  pendingFee: number;
   welcomeSent: boolean;
   reminderCount: number;
-  enrolledBy?: string;
-  enrolledByPhone?: string;
-}
-
-export interface User {
-  phoneNumber: string;
-  loginTime: string;
-  name: string;
-  sessionId?: string;
-}
-
-export interface ActiveSession {
-  id: string;
-  user_phone: string;
-  user_name: string;
-  device_type: string;
-  device_id: string;
-  login_time: string;
-  last_active: string;
-  ip_address?: string;
-}
-
-export interface LogEntry {
-  id: string;
-  userName: string; 
-  userPhone: string;
-  action: string;
-  details: string;
-  timestamp: string;
-  memberId?: string;
-  memberName?: string;
-  oldValue?: string;
-  newValue?: string;
+  enrolledBy: string;
+  enrolledByPhone: string;
+  // Fee Waiver fields
+  isPendingFeeWaivedOff: boolean;
+  waivedOffAt: string | null;
+  waivedOffBy: string | null;
 }
 
 export interface RegistrationData {
@@ -87,5 +62,35 @@ export interface RegistrationData {
   paymentReceived: number;
 }
 
-export type NavTab = 'HOME' | 'MEMBERS' | 'LOGS' | 'DEVICES';
-export type MemberTab = 'ALL' | 'ACTIVE' | '7DAYS' | '15DAYS' | 'INACTIVE';
+export interface LogEntry {
+  id: string;
+  userName: string;
+  userPhone: string;
+  memberId?: string;
+  memberName?: string;
+  action: string;
+  details: string;
+  oldValue?: string;
+  newValue?: string;
+  timestamp: string;
+}
+
+export interface ActiveSession {
+  id: string;
+  user_phone: string;
+  user_name: string;
+  device_type: string;
+  device_id: string;
+  ip_address?: string;
+  login_time: string;
+  last_active: string;
+}
+
+export interface Package {
+  id: string;
+  name: string;
+  price: number;
+  durationDays: number;
+  category: ServiceCategory;
+  isCoupleOnly: boolean;
+}

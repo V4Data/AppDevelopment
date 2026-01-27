@@ -5,14 +5,21 @@ import { User } from '../types.ts';
 interface HeaderProps {
   user: User | null;
   onLogout: () => void;
+  isConnected?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
+const Header: React.FC<HeaderProps> = ({ user, onLogout, isConnected = true }) => {
   return (
     <header className="bg-white/90 backdrop-blur-xl border-b border-slate-100 px-4 py-4 flex items-center justify-between sticky top-0 z-50 transition-all duration-300">
       <div className="flex items-center gap-3">
-        <div className="bg-slate-900 text-white font-black w-10 h-10 flex items-center justify-center rounded-2xl text-[10px] tracking-tighter shadow-lg shadow-slate-900/10">
+        <div className="bg-slate-900 text-white font-black w-10 h-10 flex items-center justify-center rounded-2xl text-[10px] tracking-tighter shadow-lg shadow-slate-900/10 relative">
           TC
+          {/* Connection Status Indicator */}
+          <div className={`absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}>
+            {isConnected && (
+              <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-75"></span>
+            )}
+          </div>
         </div>
         <div>
           <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight leading-tight">The Cage</h1>
