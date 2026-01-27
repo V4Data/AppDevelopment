@@ -23,7 +23,7 @@ interface ManagerInfo {
 }
 
 // Cache for managers loaded from database
-let managersCache: ManagerInfo[] = [];
+//let managersCache: ManagerInfo[] = [];
 
 const getDeviceType = () => {
   const ua = navigator.userAgent;
