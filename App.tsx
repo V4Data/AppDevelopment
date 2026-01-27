@@ -169,7 +169,7 @@ const App: React.FC = () => {
         
         if (!managersError && managersData) {
           setManagers(managersData);
-          managersCache = managersData;
+          //managersCache = managersData;
         }
 
         // Just fetch master key (rotation handled server-side)
