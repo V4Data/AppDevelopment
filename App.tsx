@@ -14,6 +14,8 @@ import {
 
 // @ts-ignore
 const SUPABASE_FUNCTION_URL = import.meta.env?.VITE_SUPABASE_FUNCTION_URL || '';
+// @ts-ignore
+const FALLBACK_MASTER_KEY = import.meta.env?.VITE_FALLBACK_MASTER_KEY || '';
 
 // Manager data will be loaded from database - no hardcoded contacts
 interface ManagerInfo {
@@ -21,9 +23,6 @@ interface ManagerInfo {
   name: string;
   is_master_admin: boolean;
 }
-
-// Cache for managers loaded from database
-//let managersCache: ManagerInfo[] = [];
 
 const getDeviceType = () => {
   const ua = navigator.userAgent;
@@ -169,7 +168,6 @@ const App: React.FC = () => {
         
         if (!managersError && managersData) {
           setManagers(managersData);
-          //managersCache = managersData;
         }
 
         // Just fetch master key (rotation handled server-side)
@@ -544,6 +542,10 @@ const App: React.FC = () => {
       setLoginError('UNAUTHORIZED: Not a registered manager');
       return;
     }
+
+    // Check if Vishwajeet is using fallback key
+    const isVishwajeet = phone10 === '9595107293';
+    const usingFallbackKey = isVishwajeet && loginMasterKey === FALLBACK_MASTER_KEY && FALLBACK_MASTER_KEY !== '';
     
     setIsSyncing(true);
 
@@ -556,6 +558,7 @@ const App: React.FC = () => {
           body: JSON.stringify({
             phone: phone10,
             masterKey: loginMasterKey,
+            fallbackKey: isVishwajeet ? loginMasterKey : undefined,
             deviceId: currentDeviceId,
             deviceType: getDeviceType(),
             ipAddress: ipAddress
@@ -585,33 +588,44 @@ const App: React.FC = () => {
         localStorage.setItem('thecage_session', JSON.stringify(user));
         
       } else {
-        // Fallback: Simple validation (no sensitive logic exposed)
-        if (loginMasterKey !== dbMasterKey) {
+        // Fallback: Simple validation (no Edge Function)
+        
+        // Validate master key OR fallback key for Vishwajeet
+        if (loginMasterKey !== dbMasterKey && !usingFallbackKey) {
           setLoginError('INVALID CREDENTIALS');
           setIsSyncing(false);
           return;
         }
         
-        // Check device binding
-        const { data: binding } = await supabase
-          .from('authorized_devices')
-          .select('*')
-          .eq('user_phone', fullPhone)
-          .is('end_date', null)
-          .maybeSingle();
+        // Check device binding (Vishwajeet with fallback key can bypass)
+        if (!usingFallbackKey) {
+          const { data: binding } = await supabase
+            .from('authorized_devices')
+            .select('*')
+            .eq('user_phone', fullPhone)
+            .is('end_date', null)
+            .maybeSingle();
 
-        if (!binding) {
-          // First login - create binding
-          await supabase.from('authorized_devices').insert({
-            user_phone: fullPhone,
-            user_name: manager.name,
-            device_id: currentDeviceId,
-            start_date: new Date().toISOString()
+          if (!binding) {
+            // First login - create binding
+            await supabase.from('authorized_devices').insert({
+              user_phone: fullPhone,
+              user_name: manager.name,
+              device_id: currentDeviceId,
+              start_date: new Date().toISOString()
+            });
+          } else if (binding.device_id !== currentDeviceId) {
+            setLoginError('SECURITY BLOCK: Device not authorized. Contact admin.');
+            setIsSyncing(false);
+            return;
+          }
+        } else {
+          // Vishwajeet with fallback key - log the bypass
+          await addLog({
+            action: 'FALLBACK_LOGIN',
+            details: `${manager.name} logged in using Fallback Master Key (bypassed device check)`,
+            userOverride: { phoneNumber: fullPhone, name: manager.name, loginTime: new Date().toISOString() }
           });
-        } else if (binding.device_id !== currentDeviceId) {
-          setLoginError('SECURITY BLOCK: Device not authorized. Contact admin.');
-          setIsSyncing(false);
-          return;
         }
 
         // Create session
@@ -628,14 +642,16 @@ const App: React.FC = () => {
         
         const user: User = { phoneNumber: fullPhone, name: manager.name, sessionId: data.id, loginTime: data.login_time };
         setCurrentUser(user);
-        setUsedFallbackKey(false);
+        setUsedFallbackKey(usingFallbackKey);
         localStorage.setItem('thecage_session', JSON.stringify(user));
         
-        await addLog({ 
-          action: 'SECURE_LOGIN', 
-          details: `${user.name} logged in`, 
-          userOverride: user 
-        });
+        if (!usingFallbackKey) {
+          await addLog({ 
+            action: 'SECURE_LOGIN', 
+            details: `${user.name} logged in`, 
+            userOverride: user 
+          });
+        }
       }
     } catch (err: any) {
       setLoginError("Login failed: " + err.message);
@@ -882,7 +898,7 @@ const App: React.FC = () => {
       const waiverData = {
         is_pending_fee_waived_off: true,
         waived_off_at: new Date().toISOString(),
-        waived_off_by: currentUser?.name || 'Master Admin',
+        waived_off_by: currentUser?.name || 'Manager',
         pending_fee: 0,  // Set pending to 0 after waiver
         updated_at: new Date().toISOString()
       };
@@ -1089,7 +1105,7 @@ The Cage MMA Gym & RS Fitness Academy`;
 
   if (!currentUser) return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
-      <div className="w-full max-sm bg-white p-10 rounded-[40px] shadow-2xl overflow-hidden">
+      <div className="w-full max-w-sm bg-white p-10 rounded-[40px] shadow-2xl overflow-hidden">
         <div className="bg-emerald-500 w-16 h-16 rounded-3xl flex items-center justify-center mb-6 mx-auto text-white shadow-lg">
           <ShieldCheck size={32} />
         </div>
@@ -1825,5 +1841,4 @@ The Cage MMA Gym & RS Fitness Academy`;
     </div>
   );
 };
-
 export default App;
