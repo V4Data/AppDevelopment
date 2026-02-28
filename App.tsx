@@ -1124,14 +1124,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                     onClick={() => setLoginPhone(phone10)}
                     className={`flex flex-col items-center gap-2 p-4 rounded-3xl border transition-all shrink-0 min-w-[110px] ${loginPhone === phone10 ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-slate-50 border-slate-100'}`}
                   >
-                    <div
-                          className={`w-10 h-10 rounded-2xl flex items-center justify-center 
-                          text-xs font-black transition-colors
-                          ${loginPhone === phone10
-                            ? 'bg-emerald-500 text-black [text-shadow:0_0_4px_#00f0ff,0_0_8px_#00f0ff]'
-                            : 'bg-white text-black border border-slate-200 [text-shadow:0_0_3px_#00f0ff]'
-                          }`}
-                        >
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-colors ${loginPhone === phone10 ? 'bg-emerald-500 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>
                       {loginPhone === phone10 ? <CheckCircle2 size={18} /> : manager.name.charAt(0)}
                     </div>
                     <span className={`text-[8px] font-black uppercase tracking-tight text-center leading-tight ${loginPhone === phone10 ? 'text-white' : 'text-slate-600'}`}>
@@ -1634,11 +1627,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${isBound ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-white text-slate-300 border-slate-100'}`}>
                           <Smartphone size={16} />
                         </div>
-                        <div>
-                            <h4 className="text-[12px] font-black uppercase text-black 
-                              [text-shadow:0_0_5px_#39ff14,0_0_10px_#39ff14,0_0_20px_#39ff14]">
-                              {managerName}
-                            </h4>
+                        <div> <h4 className="text-[10px] font-black uppercase text-slate-800">{managerName}</h4>
                           <p className="text-[8px] font-bold text-slate-400 uppercase">{dev.user_phone}</p>
                           <p className={`text-[7px] uppercase font-black tracking-tighter mt-1 ${isBound ? 'text-emerald-500' : 'text-red-400'}`}>
                             {isBound ? `BOUND: ${dev.device_id}` : 'NOT BOUND - AWAITING LOGIN'}
