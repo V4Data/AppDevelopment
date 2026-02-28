@@ -1628,7 +1628,11 @@ The Cage MMA Gym & RS Fitness Academy`;
                           <Smartphone size={16} />
                         </div>
                         <div>
-                          <h4 className="text-[10px] font-black uppercase text-slate-800">{managerName}</h4>
+                            <h4 className="text-[12px] font-black uppercase text-black 
+                              drop-shadow-[0_0_6px_#00f0ff] 
+                              drop-shadow-[0_0_12px_#00f0ff]">
+                              {managerName}
+                            </h4>
                           <p className="text-[8px] font-bold text-slate-400 uppercase">{dev.user_phone}</p>
                           <p className={`text-[7px] uppercase font-black tracking-tighter mt-1 ${isBound ? 'text-emerald-500' : 'text-red-400'}`}>
                             {isBound ? `BOUND: ${dev.device_id}` : 'NOT BOUND - AWAITING LOGIN'}
