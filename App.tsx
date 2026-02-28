@@ -1124,7 +1124,14 @@ The Cage MMA Gym & RS Fitness Academy`;
                     onClick={() => setLoginPhone(phone10)}
                     className={`flex flex-col items-center gap-2 p-4 rounded-3xl border transition-all shrink-0 min-w-[110px] ${loginPhone === phone10 ? 'bg-slate-900 border-slate-900 shadow-xl' : 'bg-slate-50 border-slate-100'}`}
                   >
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-colors ${loginPhone === phone10 ? 'bg-emerald-500 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>
+                    <div
+                          className={`w-10 h-10 rounded-2xl flex items-center justify-center 
+                          text-xs font-black transition-colors
+                          ${loginPhone === phone10
+                            ? 'bg-emerald-500 text-black [text-shadow:0_0_4px_#00f0ff,0_0_8px_#00f0ff]'
+                            : 'bg-white text-black border border-slate-200 [text-shadow:0_0_3px_#00f0ff]'
+                          }`}
+                        >
                       {loginPhone === phone10 ? <CheckCircle2 size={18} /> : manager.name.charAt(0)}
                     </div>
                     <span className={`text-[8px] font-black uppercase tracking-tight text-center leading-tight ${loginPhone === phone10 ? 'text-white' : 'text-slate-600'}`}>
