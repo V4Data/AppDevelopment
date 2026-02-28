@@ -1629,8 +1629,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                         </div>
                         <div>
                             <h4 className="text-[12px] font-black uppercase text-black 
-                              drop-shadow-[0_0_6px_#00f0ff] 
-                              drop-shadow-[0_0_12px_#00f0ff]">
+                              [text-shadow:0_0_5px_#39ff14,0_0_10px_#39ff14,0_0_20px_#39ff14]">
                               {managerName}
                             </h4>
                           <p className="text-[8px] font-bold text-slate-400 uppercase">{dev.user_phone}</p>
