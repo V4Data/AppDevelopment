@@ -1127,7 +1127,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                     <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black transition-colors ${loginPhone === phone10 ? 'bg-emerald-500 text-white' : 'bg-white text-slate-400 border border-slate-200'}`}>
                       {loginPhone === phone10 ? <CheckCircle2 size={18} /> : manager.name.charAt(0)}
                     </div>
-                    <span className={`text-[8px] font-black uppercase tracking-tight text-center leading-tight ${loginPhone === phone10 ? 'text-white' : 'text-slate-600'}`}>
+                    <span className={`text-[11px] font-black [text-shadow:0_0_4px_#00f0ff,0_0_8px_#00f0ff] uppercase tracking-tight text-center leading-tight ${loginPhone === phone10 ? 'text-white' : 'text-slate-600'}`}>
                       {nameParts[0]}<br/>{nameParts[1] || ''}
                     </span>
                   </button>
