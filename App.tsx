@@ -1039,17 +1039,17 @@ Greetings from The Cage MMA Gym & RS Fitness Academy.
 
 My name is ${userName} , and I am contacting you on behalf of our management team. We are delighted to welcome you to our fitness community and look forward to supporting you on your journey toward your health and performance goals.
 
-**Membership Details**
+*Membership Details*
 • Name: ${member.fullName}
 • Plan: ${member.serviceCategory} (${pkgName})
 • Joining Date: ${formatDateString(member.joiningDate)}
 • Expiry Date: ${formatDateString(member.expiryDate)}
 
-**Payment Information** 
+*Payment Information* 
 • Fees Paid: ₹${member.totalPaid}
 • Pending Fees: ₹${pendingFees}
 
-**Enrolled By** 
+*Enrolled By* 
 • Representative: ${enrollingManager}
 
 We are committed to providing a safe, professional, and motivating environment. If you have any questions or require assistance, please do not hesitate to contact our front desk.
@@ -1215,7 +1215,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                 </div>
                 <div className="flex bg-slate-50 p-1 rounded-xl">
                   {['TODAY', 'TOMORROW'].map(tab => (
-                    <button key={tab} onClick={() => setBirthdayTab(tab as any)} className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase transition-all ${birthdayTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>
+                    <button key={tab} onClick={() => setBirthdayTab(tab as any)} className={`px-3 py-1.5 rounded-lg text-[12px] font-black uppercase transition-all ${birthdayTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>
                       {tab}
                     </button>
                   ))}
@@ -1257,7 +1257,7 @@ The Cage MMA Gym & RS Fitness Academy`;
                 </div>
                 <div className="flex bg-slate-50 p-1 rounded-xl">
                   {['RENEWAL', 'PENDING'].map(tab => (
-                    <button key={tab} onClick={() => setAlertCenterTab(tab as any)} className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase transition-all ${alertCenterTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>
+                    <button key={tab} onClick={() => setAlertCenterTab(tab as any)} className={`px-3 py-1.5 rounded-lg text-[15px] font-black uppercase transition-all ${alertCenterTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>
                       {tab}
                     </button>
                   ))}
@@ -1269,11 +1269,11 @@ The Cage MMA Gym & RS Fitness Academy`;
                   <>
                     <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                       <div className="min-w-[140px] bg-red-50/50 p-4 rounded-2xl border border-red-100">
-                        <span className="text-[8px] font-black text-red-600 uppercase block mb-1">Within 7 Days</span>
+                        <span className="text-[10px] font-black text-red-600 uppercase block mb-1">Within 7 Days</span>
                         <span className="text-xl font-black text-slate-900">{homeReminders.m7.length}</span>
                       </div>
                       <div className="min-w-[140px] bg-amber-50/50 p-4 rounded-2xl border border-amber-100">
-                        <span className="text-[8px] font-black text-amber-600 uppercase block mb-1">Next 15 Days</span>
+                        <span className="text-[10px] font-black text-amber-600 uppercase block mb-1">Next 15 Days</span>
                         <span className="text-xl font-black text-slate-900">{homeReminders.m15.length}</span>
                       </div>
                     </div>
